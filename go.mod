@@ -5,9 +5,11 @@ go 1.13
 require (
 	github.com/operator-framework/operator-sdk v0.13.1-0.20191220181623-ba68281353e5
 	github.com/spf13/pflag v1.0.5
+	golang.org/x/crypto v0.0.0-20191028145041-f83a4685e152
 	k8s.io/api v0.0.0
 	k8s.io/apimachinery v0.0.0
 	k8s.io/client-go v12.0.0+incompatible
+	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d
 	sigs.k8s.io/controller-runtime v0.4.0
 )
 

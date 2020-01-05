@@ -15,11 +15,10 @@ spec:
       serviceAccountName: credential-manager
       containers:
         - name: credential-manager
-          # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: registry.example.org/credential-manager
           command:
           - credential-manager
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
@@ -31,3 +30,5 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "credential-manager"
+      imagePullSecrets:
+      - name: registry-deployment-pull-credentials

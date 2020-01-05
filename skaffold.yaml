@@ -1,0 +1,30 @@
+apiVersion: skaffold/v1
+kind: Config
+metadata:
+  name: credential-manager
+build:
+  artifacts:
+  - image: registry.example.org/credential-manager
+    context: .
+    docker:
+      dockerfile: build/Dockerfile
+deploy:
+  kustomize:
+    path: deploy
+profiles:
+- name: oncluster
+  build:
+    artifacts:
+    - image: registry.example.org/credential-manager
+      context: .
+#      kaniko:
+#        buildContext:
+          #gcsBucket: skaffold-kaniko
+#          localDir: {}
+    tagPolicy:
+      gitCommit: {}
+    cluster:
+      namespace: build
+      pullSecretName: registry-deployment-push-credentials
+      dockerConfig:
+        secretName: registry-deployment-push-credentials
