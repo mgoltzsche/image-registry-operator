@@ -7,7 +7,7 @@ import (
 
 func generateDockerConfigJson(url, user, passwd string) []byte {
 	conf := dockerConfig{map[string]dockerConfigUrlAuth{
-		url: dockerConfigUrlAuth{"Basic " + base64.RawStdEncoding.EncodeToString([]byte(user+":"+passwd))},
+		url: dockerConfigUrlAuth{base64.StdEncoding.EncodeToString([]byte(user + ":" + passwd))},
 	}}
 	b, err := json.Marshal(conf)
 	if err != nil {

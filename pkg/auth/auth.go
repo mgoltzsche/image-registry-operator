@@ -9,6 +9,7 @@ import (
 	credentialmanagerv1alpha1 "github.com/mgoltzsche/credential-manager/pkg/apis/credentialmanager/v1alpha1"
 	"golang.org/x/crypto/bcrypt"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,13 +30,12 @@ type Authenticator struct {
 	log    ErrorLogger
 }
 
-func NewAuthenticator(log ErrorLogger) (a *Authenticator, err error) {
-	cfg := &rest.Config{}
-	mapper, err := apiutil.NewDynamicRESTMapper(cfg)
+func NewAuthenticator(cfg *rest.Config, log ErrorLogger) (a *Authenticator, err error) {
+	scheme, err := credentialmanagerv1alpha1.SchemeBuilder.Build()
 	if err != nil {
 		return
 	}
-	scheme, err := credentialmanagerv1alpha1.SchemeBuilder.Build()
+	mapper, err := apiutil.NewDynamicRESTMapper(cfg)
 	if err != nil {
 		return
 	}
@@ -48,7 +48,7 @@ func NewAuthenticator(log ErrorLogger) (a *Authenticator, err error) {
 
 func (a *Authenticator) Authenticate(user, passwd string) *Authenticated {
 	cr := a.findCR(user)
-	if isValid(cr) && matchPassword(cr.Status.Passwords, passwd) {
+	if cr != nil && matchPassword(cr.Status.Passwords, passwd) {
 		return &Authenticated{
 			Namespace: cr.Namespace,
 			Name:      cr.Name,
@@ -77,12 +77,13 @@ func (a *Authenticator) findCR(user string) (cr *credentialmanagerv1alpha1.Image
 	namespace := userParts[0]
 	name := userParts[1]
 	fetchedCR := &credentialmanagerv1alpha1.ImagePullSecret{}
-	err := a.client.Get(context.TODO(), types.NamespacedName{namespace, name}, fetchedCR)
+	key := types.NamespacedName{Namespace: namespace, Name: name}
+	err := a.client.Get(context.TODO(), key, fetchedCR)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			a.log(err)
 		}
-	} else if isValid(cr) {
+	} else if isValid(fetchedCR) {
 		cr = fetchedCR
 		a.addToCache(user, cr)
 	}
@@ -104,5 +105,5 @@ func (a *Authenticator) addToCache(user string, cr *credentialmanagerv1alpha1.Im
 }
 
 func isValid(cr *credentialmanagerv1alpha1.ImagePullSecret) bool {
-	return time.Now().Before(cr.Status.GenerationDate.Add(time.Minute * 30))
+	return time.Now().Before(cr.Status.RotationDate.Add(time.Minute * 30))
 }

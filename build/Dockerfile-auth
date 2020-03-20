@@ -5,15 +5,15 @@ RUN go mod download
 
 FROM builddeps AS build
 COPY . /go/src/github.com/mgoltzsche/credential-manager
-RUN go build -ldflags '-s -w -extldflags "-static"' ./cmd/manager && mv manager /bin/
+RUN go build -ldflags '-s -w -extldflags "-static"' ./cmd/authservice && mv authservice /bin/
 
-# Prepare operator image
-FROM alpine:3.11 AS operator
+# Prepare authservice image
+FROM alpine:3.11
 COPY build/bin /usr/local/bin
-ENV OPERATOR=/usr/local/bin/credential-manager \
-    USER_UID=1001 \
-    USER_NAME=credential-manager
+ENV OPERATOR=/usr/local/bin/authservice \
+    USER_UID=1002 \
+    USER_NAME=authservice
 RUN /usr/local/bin/user_setup
 USER ${USER_UID}
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
-COPY --from=build /bin/manager ${OPERATOR}
+COPY --from=build /bin/authservice ${OPERATOR}

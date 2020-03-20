@@ -8,6 +8,11 @@ build:
     context: .
     docker:
       dockerfile: build/Dockerfile
+  - image: registry.example.org/authservice
+    context: .
+    docker:
+      dockerfile: build/Dockerfile
+      target: authservice
 deploy:
   kustomize:
     path: deploy
@@ -21,6 +26,8 @@ profiles:
 #        buildContext:
           #gcsBucket: skaffold-kaniko
 #          localDir: {}
+    - image: registry.example.org/authservice
+      context: .
     tagPolicy:
       gitCommit: {}
     cluster:

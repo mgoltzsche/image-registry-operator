@@ -8,7 +8,7 @@ import (
 
 func TestGeneratePassword(t *testing.T) {
 	pw := generatePassword()
-	if len(pw) != 32 {
+	if len(pw) != 16 {
 		t.Errorf("len != 32: %s", string(pw))
 	}
 	charCountMap := map[byte]int{}
@@ -21,12 +21,14 @@ func TestGeneratePassword(t *testing.T) {
 }
 
 func TestBcryptPassword(t *testing.T) {
-	pw := generatePassword()
+	pw := []byte(allChars + "test")
 	hashed, err := bcryptPassword(pw)
 	if err != nil {
 		t.Error(err)
+		t.FailNow()
 	}
 	if err = bcrypt.CompareHashAndPassword(hashed, pw); err != nil {
 		t.Error(err)
+		t.FailNow()
 	}
 }

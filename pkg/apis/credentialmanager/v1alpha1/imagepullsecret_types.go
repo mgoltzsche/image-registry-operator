@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"github.com/operator-framework/operator-sdk/pkg/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -22,6 +23,8 @@ type ImagePullSecretStatus struct {
 	Rotation uint64 `json:"rotation,omitempty"`
 	// Date on which the latest password has been generated.
 	RotationDate metav1.Time `json:"rotationDate,omitempty"`
+	// Conditions represent the latest available observations of an object's state
+	Conditions status.Conditions `json:"conditions,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
