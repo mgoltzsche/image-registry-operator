@@ -3,6 +3,8 @@ module github.com/mgoltzsche/credential-manager
 go 1.13
 
 require (
+	github.com/cesanta/docker_auth/auth_server v0.0.0-20191208151258-df57ccaa8701
+	github.com/cesanta/glog v0.0.0-20150527111657-22eb27a0ae19
 	github.com/operator-framework/operator-sdk v0.16.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
@@ -42,3 +44,16 @@ replace (
 replace github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309 // Required by Helm
 
 replace github.com/openshift/api => github.com/openshift/api v0.0.0-20190924102528-32369d4db2ad // Required until https://github.com/operator-framework/operator-lifecycle-manager/pull/1241 is resolved
+
+// Pinned to cesanta/docker_auth 1.5.0.
+// For plugin compatibility all dependencies (also transitive!) that appear within docker_auth as well must be pinned to the same version here.
+// If the version does not match docker_auth terminates with an error when attempting to load the plugin:
+//   "error while loading authn plugin: [...]: plugin was built with a different version of package [...]"
+// This can be resolved by listing docker_auth's dependencies (go list -m all) and pin the corresponding package version here.
+replace (
+	github.com/cesanta/glog => github.com/cesanta/glog v0.0.0-20150527111657-22eb27a0ae19
+	golang.org/x/crypto => golang.org/x/crypto v0.0.0-20190820162420-60c769a6c586
+	golang.org/x/net => golang.org/x/net v0.0.0-20190813141303-74dc4d7220e7
+	golang.org/x/sys => golang.org/x/sys v0.0.0-20190624142023-c5567b49c5d0
+	gopkg.in/yaml.v2 => gopkg.in/yaml.v2 v2.2.2
+)

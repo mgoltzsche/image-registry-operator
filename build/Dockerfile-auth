@@ -1,19 +1,41 @@
-FROM docker.io/library/golang:1.14-alpine3.11 AS builddeps
+# Build auth_server
+FROM docker.io/library/golang:1.14-alpine3.11 AS auth_server_build
+RUN apk add --update --no-cache git make gcc libc-dev py2-pip && pip install GitPython
+ARG CESANTA_DOCKER_AUTH_VERSION=1.5.0
+RUN git clone --branch=${CESANTA_DOCKER_AUTH_VERSION} https://github.com/cesanta/docker_auth /go/src/github.com/cesanta/docker_auth
+WORKDIR /go/src/github.com/cesanta/docker_auth/auth_server
+RUN go mod download
+RUN go install -v github.com/a-urth/go-bindata/go-bindata
+RUN make generate
+RUN go build -o /auth_server -ldflags '-s -w'
+
+# Build plugin
 COPY go.mod go.sum /go/src/github.com/mgoltzsche/credential-manager/
 WORKDIR /go/src/github.com/mgoltzsche/credential-manager
+RUN echo 'replace github.com/cesanta/docker_auth/auth_server => ../../cesanta/docker_auth/auth_server' >> go.mod
 RUN go mod download
+COPY pkg /go/src/github.com/mgoltzsche/credential-manager/pkg
+COPY docker-authn-plugin /go/src/github.com/mgoltzsche/credential-manager/docker-authn-plugin
+WORKDIR /go/src/github.com/mgoltzsche/credential-manager/docker-authn-plugin
+RUN go build -o /k8s-docker-authn.so -buildmode=plugin -ldflags '-s -w'
 
-FROM builddeps AS build
-COPY . /go/src/github.com/mgoltzsche/credential-manager
-RUN go build -ldflags '-s -w -extldflags "-static"' ./cmd/authservice && mv authservice /bin/
+# Build clean auth_server image
+FROM alpine:3.11 AS auth_server
+RUN apk add --update --no-cache ca-certificates
+RUN addgroup -g 5001 auth_server
+RUN adduser -u 5001 -G auth_server -S -h /auth_server_data auth_server
+USER auth_server:auth_server
+ENV HOME=/auth_server_data
+COPY --from=auth_server_build /auth_server /k8s-docker-authn.so /docker_auth/
+ENTRYPOINT ["/docker_auth/auth_server"]
+CMD ["/config/auth_config.yml"]
+EXPOSE 5001
 
-# Prepare authservice image
-FROM alpine:3.11
-COPY build/bin /usr/local/bin
-ENV OPERATOR=/usr/local/bin/authservice \
-    USER_UID=1002 \
-    USER_NAME=authservice
-RUN /usr/local/bin/user_setup
-USER ${USER_UID}
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
-COPY --from=build /bin/authservice ${OPERATOR}
+# Test plugin binary compatibility
+FROM auth_server
+RUN printf 'server:\n  addr: ":5001"\ntoken:\n  issuer: "Acme auth server"\n  expiration: 900\nacl: []\n' > /tmp/auth_config.yml && \
+	printf 'plugin_authn:\n  plugin_path: "%s"' /docker_auth/k8s-docker-authn.so >> /tmp/auth_config.yml
+# Should fail with exit code 2 reported by plugin due to missing KUBECONFIG
+RUN timeout 3 /docker_auth/auth_server /tmp/auth_config.yml || [ $? -eq 2 ]
+
+FROM auth_server

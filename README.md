@@ -1,9 +1,17 @@
-secret manager
+image-registry-operator
 ===
 
 A controller that watches `ImagePullSecret` CRs and generates concrete secrets for them.
 The CR usage allows to declare docker registry authentication or delegate it using RBAC rules.  
 
+**TODO:**
+* Rename go package to correspond to the new repository name.
+* Support CRD `ImageRegistry`.
+* Rename `ImagePullSecret` CRD to `ImageRegistryAccess` or add additional `ImagePushSecret` CRD.
+  (push secret should have `config` property to avoid using it as pullSecret and allow to easily mount it in image build jobs)
+* Provide optional PodPreset(s) to implicitly mount `default-image-push-secret` into e.g. every skaffold-kaniko pod.
+
+# How it works
 For each `ImagePullSecret` CR a dockerconfig secret is maintained.
 The corresponding registry URL is configured as operator deployment environment variable.
 The username is derived from the CR following the scheme `<namespace>/<name>/<status.rotation>`.
@@ -14,13 +22,34 @@ to be actually used by clients.
 Correspondingly the active two bcrypt password hashes are maintained within the CR's status field `passwords`.
 Other applications may use them to authenticate users.  
 
-The `authservice` is meant to run in a pod with [cesanta/docker_auth](https://github.com/cesanta/docker_auth)
-which could simply call it using `wget` configured as `ext_auth` to delegate authentication
-while authorization could be specified using [docker_auth's ACL](https://github.com/cesanta/docker_auth/blob/master/docs/Labels.md).  
+For authentication against the CRs an image with [cesanta/docker_auth](https://github.com/cesanta/docker_auth)
+and the `docker-authn-plugin` within this repository is built.
+In order to use the plugin containers should be configured correspondingly (`auth_config.yml`):
+```
+plugin_authn:
+  plugin_path: /docker_auth/k8s-docker-authn.so
+```
 
-_Initially the idea was to generate a htpasswd into a secret within the
-operator's namespace but the amount of process restarts it would have cost when mounting
-them made the solution less attractive. However it would still be possible to do so._
+Authorization can be specified using [docker_auth's ACL](https://github.com/cesanta/docker_auth/blob/master/docs/Labels.md).
+
+
+# How to build
+Build the operator and [docker_auth](https://github.com/cesanta/docker_auth) images (requires make and docker/podman):
+```
+make operator docker_auth
+```
+
+
+# How to test
+Run unit tests:
+```
+make unit-tests
+```
+Run e2e tests (requires a kubernetes cluster and its KUBECONFIG env var populated):
+```
+make e2e-tests
+```
+
 
 # Development notes
 
@@ -29,8 +58,7 @@ The operator skeleton has been generated using the [operator-sdk](https://github
 * The `deploy/crds` directory is generated from `pkg/apis/credentialmanager/v1alpha1/*_types.go`.
 * The `pkg/controller/*` directories contain the code that handles the corresponding CRD.
 
-The CRD files in `deploy/crd` can be generated as follows:
+The CRD files in `deploy/crd` need to be regenerated as follows when an API type changes:
 ```
-operator-sdk generate k8s
-operator-sdk generate crds
+make generate
 ```

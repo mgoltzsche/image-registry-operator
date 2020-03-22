@@ -78,4 +78,3 @@ tags
 
 manager
 cmd/manager/manager
-cmd/authservice/authservice

@@ -32,11 +32,12 @@ func testImagePullSecret(t *testing.T, ctx *framework.Context, namespace string)
 	require.NoError(t, err, "create CR")
 
 	key := dynclient.ObjectKey{Name: secretCR.Name + "-image-pull-secret", Namespace: namespace}
-	usr, pw := waitForSecretUpdateAndAssert(t, secretCR, key, 1)
+	waitForSecretUpdateAndAssert(t, secretCR, key, 1)
 
+	/*usr, pw := waitForSecretUpdateAndAssert(t, secretCR, key, 1)
 	t.Run("authservice", func(t *testing.T) {
 		testAuthService(t, ctx, namespace, secretCR.Name, usr, pw)
-	})
+	})*/
 
 	t.Run("credential rotation", func(t *testing.T) {
 		for i := 2; i < 4; i++ {

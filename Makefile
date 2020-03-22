@@ -1,8 +1,8 @@
 PKG=github.com/mgoltzsche/credential-manager
 TEST_IMAGE=credential-manager-test
+TEST_NAMESPACE=registry-operator-test-$(shell date '+%Y%m%d-%H%M%S')
 define TESTDOCKERFILE
 	FROM $(TEST_IMAGE)
-	RUN apk add --update --no-cache curl make gcc libc-dev
 	ENV K8S_VERSION=v1.17.3
 	RUN curl -fsSLo /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$${K8S_VERSION}/bin/linux/amd64/kubectl \
 		&& chmod +x /usr/local/bin/kubectl
@@ -13,13 +13,19 @@ endef
 export TESTDOCKERFILE
 
 
-all: operator authenticator
+all: operator docker_auth
 
 operator:
-	docker build --force-rm -t credential-manager -f build/Dockerfile .
+	docker build --force-rm -t credential-manager -f build/Dockerfile --target operator .
 
-authenticator:
-	docker build --force-rm -t registry-authenticator -f build/Dockerfile-auth .
+docker_auth:
+	docker build --force-rm -t docker_auth -f build/Dockerfile-auth .
+
+unit-tests:
+	docker build --force-rm -f build/Dockerfile .
+
+e2e-tests:
+	make containerized-run-e2e-tests
 
 containerized-%: test-image
 	$(eval DOCKER ?= $(if $(shell docker -v),docker,podman))
@@ -36,9 +42,9 @@ generate:
 	operator-sdk generate k8s
 	operator-sdk generate crds
 
-e2e-tests:
-	kubectl create namespace operator-test
-	operator-sdk test local ./test/e2e --namespace operator-test --up-local; \
+run-e2e-tests:
+	kubectl create namespace $(TEST_NAMESPACE)
+	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --up-local; \
 	STATUS=$$?; \
-	kubectl delete namespace operator-test; \
+	kubectl delete namespace $(TEST_NAMESPACE); \
 	exit $$STATUS

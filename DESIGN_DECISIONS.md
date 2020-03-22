@@ -9,6 +9,7 @@ These privileges should not be exposed to/mixed up with the registry:
 * Users may copy a pull secret to their local machine in order to get registry access locally during development.
   In case of a mobile device this can have serious security implications if the device is stolen and the secret is not rotated frequently.
   (However when the registry is integrated with an SSO system as well this scenario should not happen.)
+* cesanta/docker_auth does not support Bearer token authentication for external or plugin authn (see below)
 
 ### Why rotate registry user credentials?
 Because the registry is a critical infrastructure component and
