@@ -15,7 +15,7 @@ spec:
       serviceAccountName: credential-manager
       containers:
         - name: credential-manager
-          image: registry.example.org/credential-manager
+          image: mgoltzsche/image-registry-operator:latest
           command:
           - credential-manager
           imagePullPolicy: IfNotPresent
