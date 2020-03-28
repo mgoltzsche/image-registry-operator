@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	credentialmanagerv1alpha1 "github.com/mgoltzsche/credential-manager/pkg/apis/credentialmanager/v1alpha1"
+	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	"golang.org/x/crypto/bcrypt"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -25,13 +25,13 @@ type ErrorLogger func(error)
 
 type Authenticator struct {
 	client client.Client
-	cache  map[string]*credentialmanagerv1alpha1.ImagePullSecret
+	cache  map[string]*registryapi.ImagePullSecret
 	lock   sync.Locker
 	log    ErrorLogger
 }
 
 func NewAuthenticator(cfg *rest.Config, log ErrorLogger) (a *Authenticator, err error) {
-	scheme, err := credentialmanagerv1alpha1.SchemeBuilder.Build()
+	scheme, err := registryapi.SchemeBuilder.Build()
 	if err != nil {
 		return
 	}
@@ -43,7 +43,7 @@ func NewAuthenticator(cfg *rest.Config, log ErrorLogger) (a *Authenticator, err 
 	if err != nil {
 		return
 	}
-	return &Authenticator{reader, map[string]*credentialmanagerv1alpha1.ImagePullSecret{}, &sync.Mutex{}, log}, nil
+	return &Authenticator{reader, map[string]*registryapi.ImagePullSecret{}, &sync.Mutex{}, log}, nil
 }
 
 func (a *Authenticator) Authenticate(user, passwd string) *Authenticated {
@@ -66,7 +66,7 @@ func matchPassword(hashed []string, passwd string) bool {
 	return false
 }
 
-func (a *Authenticator) findCR(user string) (cr *credentialmanagerv1alpha1.ImagePullSecret) {
+func (a *Authenticator) findCR(user string) (cr *registryapi.ImagePullSecret) {
 	userParts := strings.SplitN(user, "/", 3)
 	if len(userParts) != 3 {
 		return // unsupported user name format
@@ -76,7 +76,7 @@ func (a *Authenticator) findCR(user string) (cr *credentialmanagerv1alpha1.Image
 	}
 	namespace := userParts[0]
 	name := userParts[1]
-	fetchedCR := &credentialmanagerv1alpha1.ImagePullSecret{}
+	fetchedCR := &registryapi.ImagePullSecret{}
 	key := types.NamespacedName{Namespace: namespace, Name: name}
 	err := a.client.Get(context.TODO(), key, fetchedCR)
 	if err != nil {
@@ -90,10 +90,10 @@ func (a *Authenticator) findCR(user string) (cr *credentialmanagerv1alpha1.Image
 	return
 }
 
-func (a *Authenticator) addToCache(user string, cr *credentialmanagerv1alpha1.ImagePullSecret) {
+func (a *Authenticator) addToCache(user string, cr *registryapi.ImagePullSecret) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	cache := map[string]*credentialmanagerv1alpha1.ImagePullSecret{}
+	cache := map[string]*registryapi.ImagePullSecret{}
 	for usr, cr := range a.cache {
 		if isValid(cr) {
 			// drop old entries
@@ -104,6 +104,6 @@ func (a *Authenticator) addToCache(user string, cr *credentialmanagerv1alpha1.Im
 	a.cache = cache
 }
 
-func isValid(cr *credentialmanagerv1alpha1.ImagePullSecret) bool {
+func isValid(cr *registryapi.ImagePullSecret) bool {
 	return time.Now().Before(cr.Status.RotationDate.Add(time.Minute * 30))
 }

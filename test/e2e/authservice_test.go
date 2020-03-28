@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgoltzsche/credential-manager/pkg/auth"
+	"github.com/mgoltzsche/image-registry-operator/pkg/auth"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	"github.com/stretchr/testify/require"

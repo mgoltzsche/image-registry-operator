@@ -32,9 +32,17 @@ TODO: Verify that it also works when the pull secret is created after the first 
 RBAC:
 * The authservice should be configurable to read multiple namespaces' CRs but not all secrets.
 * Authentication via secret check only would allow any account that can create/delete secrets to create/delete a registry account.
+* Navigating from CR to Secret resource per authentication would be unnecessary overhead.
 * Stop users from accessing the registry using self-managed, potentially insecure secrets (without CR).
 
 ### Why use basic auth instead of a JWT?
-* Registry access can be denied immediately by removing the CR (JWT would still be valid until it expires).
+* Registry access can be denied immediately by removing the CR (JWT would still be valid until it expires - however docker's JWT may still be valid anyway).
 * With JWT secret renewal interval would need to be relatively short.
-* Currently cesanta/docker-auth doesn't seem to support Bearer Token (JWT) authentication for external authentication.
+* Currently cesanta/docker-auth doesn't support Bearer Token (JWT) authentication for external or plugin authentication but basic auth only.
+* Docker proceeds to work with docker-auth's JWT afterwards anyway.
+
+### Why use separate ImagePullSecret/ImagePushSecret CRDs instead of a single RegistryAccount CRD with a push flag/subtype?
+* Ensure pull secret format differs from push secret format as well as the pull password differs from the push password. (pull secrets are more widely distributed (to nodes) than push secrets and the latter have a higher security impact)
+* Declare either a pull or a push secret when needed - not always both (imagine one pull secret and multiple push secrets per namespace or push secrets only)
+* Allow users to delegate pull and push account management separately (RBAC)
+* Avoid controller edge cases that would occur when changing a CR's mode from push to pull or vice versa (CR/secret password sync)

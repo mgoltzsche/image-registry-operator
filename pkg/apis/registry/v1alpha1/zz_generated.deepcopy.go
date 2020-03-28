@@ -5,6 +5,7 @@
 package v1alpha1
 
 import (
+	status "github.com/operator-framework/operator-sdk/pkg/status"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -94,6 +95,13 @@ func (in *ImagePullSecretStatus) DeepCopyInto(out *ImagePullSecretStatus) {
 		copy(*out, *in)
 	}
 	in.RotationDate.DeepCopyInto(&out.RotationDate)
+	if in.Conditions != nil {
+		in, out := &in.Conditions, &out.Conditions
+		*out = make(status.Conditions, len(*in))
+		for key, val := range *in {
+			(*out)[key] = *val.DeepCopy()
+		}
+	}
 	return
 }
 

@@ -55,7 +55,7 @@ make e2e-tests
 
 The operator skeleton has been generated using the [operator-sdk](https://github.com/operator-framework):
 * The `deploy` directory contains the corresponding kubernetes manifests.
-* The `deploy/crds` directory is generated from `pkg/apis/credentialmanager/v1alpha1/*_types.go`.
+* The `deploy/crds` directory is generated from `pkg/apis/registry/v1alpha1/*_types.go`.
 * The `pkg/controller/*` directories contain the code that handles the corresponding CRD.
 
 The CRD files in `deploy/crd` need to be regenerated as follows when an API type changes:

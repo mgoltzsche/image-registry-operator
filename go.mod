@@ -1,4 +1,4 @@
-module github.com/mgoltzsche/credential-manager
+module github.com/mgoltzsche/image-registry-operator
 
 go 1.13
 

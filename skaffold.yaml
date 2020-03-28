@@ -1,10 +1,10 @@
 apiVersion: skaffold/v1
 kind: Config
 metadata:
-  name: credential-manager
+  name: image-registry-operator
 build:
   artifacts:
-  - image: registry.example.org/credential-manager
+  - image: registry.example.org/image-registry-operator
     context: .
     docker:
       dockerfile: build/Dockerfile
@@ -20,7 +20,7 @@ profiles:
 - name: oncluster
   build:
     artifacts:
-    - image: registry.example.org/credential-manager
+    - image: registry.example.org/image-registry-operator
       context: .
 #      kaniko:
 #        buildContext:

@@ -1,14 +1,14 @@
-PKG=github.com/mgoltzsche/credential-manager
-TEST_IMAGE=credential-manager-test
-TEST_NAMESPACE=registry-operator-test-$(shell date '+%Y%m%d-%H%M%S')
+PKG=github.com/mgoltzsche/image-registry-operator
+TEST_IMAGE=image-registry-operator-test
+TEST_NAMESPACE=image-registry-operator-test-$(shell date '+%Y%m%d-%H%M%S')
 define TESTDOCKERFILE
 	FROM $(TEST_IMAGE)
 	ENV K8S_VERSION=v1.17.3
 	RUN curl -fsSLo /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$${K8S_VERSION}/bin/linux/amd64/kubectl \
 		&& chmod +x /usr/local/bin/kubectl
-	ENV OPERATOR_SDK_VERSION=v0.16.0
-	RUN curl -fsSLo /usr/local/bin/operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/$${OPERATOR_SDK_VERSION}/operator-sdk-$${OPERATOR_SDK_VERSION}-x86_64-linux-gnu \
-		&& chmod +x /usr/local/bin/operator-sdk
+	#ENV OPERATOR_SDK_VERSION=v0.16.0
+	#RUN curl -fsSLo /usr/local/bin/operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/$${OPERATOR_SDK_VERSION}/operator-sdk-$${OPERATOR_SDK_VERSION}-x86_64-linux-gnu \
+	#		&& chmod +x /usr/local/bin/operator-sdk
 endef
 export TESTDOCKERFILE
 
@@ -16,7 +16,7 @@ export TESTDOCKERFILE
 all: operator docker_auth
 
 operator:
-	docker build --force-rm -t credential-manager -f build/Dockerfile --target operator .
+	docker build --force-rm -t image-registry-operator -f build/Dockerfile --target operator .
 
 docker_auth:
 	docker build --force-rm -t docker_auth -f build/Dockerfile-auth .
@@ -48,3 +48,9 @@ run-e2e-tests:
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE); \
 	exit $$STATUS
+
+install-tools: download-deps
+	cat tools.go | grep -E '^\s*_' | cut -d'"' -f2 | xargs -n1 go install
+
+download-deps:
+	go mod download

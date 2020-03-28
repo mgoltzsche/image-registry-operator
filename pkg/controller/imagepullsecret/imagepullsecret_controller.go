@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	credentialmanagerv1alpha1 "github.com/mgoltzsche/credential-manager/pkg/apis/credentialmanager/v1alpha1"
+	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	"golang.org/x/crypto/bcrypt"
 	corev1 "k8s.io/api/core/v1"
@@ -54,7 +54,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to primary resource ImagePullSecret
-	err = c.Watch(&source.Kind{Type: &credentialmanagerv1alpha1.ImagePullSecret{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &registryapi.ImagePullSecret{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Watch for changes to secondary resource Secrets and requeue the owner ImagePullSecret
 	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &credentialmanagerv1alpha1.ImagePullSecret{},
+		OwnerType:    &registryapi.ImagePullSecret{},
 	})
 	if err != nil {
 		return err
@@ -92,7 +92,7 @@ func (r *ReconcileImagePullSecret) Reconcile(request reconcile.Request) (reconci
 	reqLogger.Info("Reconciling ImagePullSecret")
 
 	// Fetch the ImagePullSecret instance
-	instance := &credentialmanagerv1alpha1.ImagePullSecret{}
+	instance := &registryapi.ImagePullSecret{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -183,7 +183,7 @@ func (r *ReconcileImagePullSecret) Reconcile(request reconcile.Request) (reconci
 	return reconcile.Result{RequeueAfter: rotationInterval - pwAge + 30*time.Second}, nil
 }
 
-func rotatePassword(cr *credentialmanagerv1alpha1.ImagePullSecret, secret *corev1.Secret) (err error) {
+func rotatePassword(cr *registryapi.ImagePullSecret, secret *corev1.Secret) (err error) {
 	rotationCount := cr.Status.Rotation + 1
 	activeHashedPws := cr.Status.Passwords
 	user := newUserNameForCR(cr, rotationCount)
@@ -236,11 +236,11 @@ func shiftPassword(old []string, newPasswd []byte) (hashed []string, err error) 
 	return hashed, nil
 }
 
-func newUserNameForCR(cr *credentialmanagerv1alpha1.ImagePullSecret, rotation uint64) []byte {
+func newUserNameForCR(cr *registryapi.ImagePullSecret, rotation uint64) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%d", cr.Namespace, cr.Name, rotation))
 }
 
-func newSecretForCR(cr *credentialmanagerv1alpha1.ImagePullSecret) *corev1.Secret {
+func newSecretForCR(cr *registryapi.ImagePullSecret) *corev1.Secret {
 	labels := map[string]string{
 		"app": cr.Name,
 	}

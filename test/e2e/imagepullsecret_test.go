@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	operator "github.com/mgoltzsche/credential-manager/pkg/apis/credentialmanager/v1alpha1"
+	operator "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"

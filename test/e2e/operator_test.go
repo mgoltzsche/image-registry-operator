@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgoltzsche/credential-manager/pkg/apis"
-	operator "github.com/mgoltzsche/credential-manager/pkg/apis/credentialmanager/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/apis"
+	operator "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	"github.com/operator-framework/operator-sdk/pkg/test/e2eutil"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ func TestOperator(t *testing.T) {
 	namespace, err := ctx.GetNamespace()
 	require.NoError(t, err)
 	f := framework.Global
-	err = e2eutil.WaitForOperatorDeployment(t, f.KubeClient, namespace, "credential-manager", 1, time.Second*5, time.Second*30)
+	err = e2eutil.WaitForOperatorDeployment(t, f.KubeClient, namespace, "image-registry-operator", 1, time.Second*5, time.Second*30)
 	require.NoError(t, err)
 
 	t.Run("ImagePullSecret", func(t *testing.T) {

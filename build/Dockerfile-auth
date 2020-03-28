@@ -10,13 +10,13 @@ RUN make generate
 RUN go build -o /auth_server -ldflags '-s -w'
 
 # Build plugin
-COPY go.mod go.sum /go/src/github.com/mgoltzsche/credential-manager/
-WORKDIR /go/src/github.com/mgoltzsche/credential-manager
+COPY go.mod go.sum /go/src/github.com/mgoltzsche/image-registry-operator/
+WORKDIR /go/src/github.com/mgoltzsche/image-registry-operator
 RUN echo 'replace github.com/cesanta/docker_auth/auth_server => ../../cesanta/docker_auth/auth_server' >> go.mod
 RUN go mod download
-COPY pkg /go/src/github.com/mgoltzsche/credential-manager/pkg
-COPY docker-authn-plugin /go/src/github.com/mgoltzsche/credential-manager/docker-authn-plugin
-WORKDIR /go/src/github.com/mgoltzsche/credential-manager/docker-authn-plugin
+COPY pkg /go/src/github.com/mgoltzsche/image-registry-operator/pkg
+COPY docker-authn-plugin /go/src/github.com/mgoltzsche/image-registry-operator/docker-authn-plugin
+WORKDIR /go/src/github.com/mgoltzsche/image-registry-operator/docker-authn-plugin
 RUN go build -o /k8s-docker-authn.so -buildmode=plugin -ldflags '-s -w'
 
 # Build clean auth_server image

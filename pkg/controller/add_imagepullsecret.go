@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/mgoltzsche/credential-manager/pkg/controller/imagepullsecret"
+	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imagepullsecret"
 )
 
 func init() {

@@ -11,9 +11,9 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
-	"github.com/mgoltzsche/credential-manager/pkg/apis"
-	"github.com/mgoltzsche/credential-manager/pkg/controller"
-	"github.com/mgoltzsche/credential-manager/version"
+	"github.com/mgoltzsche/image-registry-operator/pkg/apis"
+	"github.com/mgoltzsche/image-registry-operator/pkg/controller"
+	"github.com/mgoltzsche/image-registry-operator/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"
@@ -83,7 +83,7 @@ func main() {
 
 	ctx := context.TODO()
 	// Become the leader before proceeding
-	err = leader.Become(ctx, "credential-manager-lock")
+	err = leader.Become(ctx, "image-registry-operator-lock")
 	if err != nil {
 		log.Error(err, "")
 		os.Exit(1)

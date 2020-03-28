@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: credential-manager
+  name: image-registry-operator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      name: credential-manager
+      name: image-registry-operator
   template:
     metadata:
       labels:
-        name: credential-manager
+        name: image-registry-operator
     spec:
-      serviceAccountName: credential-manager
+      serviceAccountName: image-registry-operator
       containers:
-        - name: credential-manager
+        - name: operator
           image: mgoltzsche/image-registry-operator:latest
           command:
-          - credential-manager
+          - image-registry-operator
           imagePullPolicy: IfNotPresent
           env:
             - name: WATCH_NAMESPACE
@@ -29,6 +29,6 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
-              value: "credential-manager"
+              value: "image-registry-operator"
       imagePullSecrets:
       - name: registry-deployment-pull-credentials

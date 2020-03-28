@@ -6,7 +6,7 @@ import (
 	"github.com/cesanta/docker_auth/auth_server/api"
 
 	"github.com/cesanta/glog"
-	"github.com/mgoltzsche/credential-manager/pkg/auth"
+	"github.com/mgoltzsche/image-registry-operator/pkg/auth"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
