@@ -11,7 +11,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const pluginName = "k8s-authn"
+const (
+	pluginName     = "k8s-authn"
+	labelType      = "type"
+	labelName      = "name"
+	labelNamespace = "namespace"
+	labelIntent    = "intent"
+)
 
 var (
 	// Export cesanta/docker_auth plugin
@@ -27,8 +33,10 @@ type k8sDockerAuthnPlugin struct {
 func (p *k8sDockerAuthnPlugin) Authenticate(user string, password api.PasswordString) (bool, api.Labels, error) {
 	if authenticated := p.auth.Authenticate(user, password.String()); authenticated != nil {
 		labels := map[string][]string{
-			"name":      []string{authenticated.Name},
-			"namespace": []string{authenticated.Namespace},
+			labelType:      []string{authenticated.Type},
+			labelName:      []string{authenticated.Name},
+			labelNamespace: []string{authenticated.Namespace},
+			labelIntent:    []string{string(authenticated.Intent)},
 		}
 		return true, labels, nil
 	}

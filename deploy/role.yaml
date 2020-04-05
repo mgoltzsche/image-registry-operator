@@ -70,6 +70,7 @@ rules:
   - registry.mgoltzsche.github.com
   resources:
   - '*'
+  - imagepushsecrets
   verbs:
   - create
   - delete

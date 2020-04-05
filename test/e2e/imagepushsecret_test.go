@@ -9,16 +9,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func testImagePushSecret(t *testing.T, ctx *framework.Context, namespace string) {
+func testImagePullSecret(t *testing.T, ctx *framework.Context, namespace string) {
 	testImageSecret(t, ctx, ImageSecretTestCase{
-		Type: operator.TypePush,
-		CR: &operator.ImagePushSecret{
+		Type: operator.TypePull,
+		CR: &operator.ImagePullSecret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-push-secret-cr",
+				Name:      "my-pull-secret-cr",
 				Namespace: namespace,
 			},
 		},
-		SecretType:      corev1.SecretTypeOpaque,
-		DockerConfigKey: "config.json",
+		SecretType:      corev1.SecretTypeDockerConfigJson,
+		DockerConfigKey: ".dockerconfigjson",
 	})
 }

@@ -30,4 +30,7 @@ func TestOperator(t *testing.T) {
 	t.Run("ImagePullSecret", func(t *testing.T) {
 		testImagePullSecret(t, ctx, namespace)
 	})
+	t.Run("ImagePushSecret", func(t *testing.T) {
+		testImagePushSecret(t, ctx, namespace)
+	})
 }

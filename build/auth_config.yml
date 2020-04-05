@@ -1,0 +1,25 @@
+server:
+  addr: ":5001"
+
+plugin_authn:
+  plugin_path: /docker_auth/k8s-docker-authn.so
+
+token:
+  issuer: "Docker Registry Auth Service"  # Must match issuer in the Registry config.
+  expiration: 900
+  certificate: "/config/certs/tls.crt"
+  key: "/config/certs/tls.key"
+
+acl:
+  - match:
+      type: cr
+      intent: push
+    actions:
+    - pull
+    - push
+    comment: ImagePushSecret users can push/pull
+  - match:
+      type: cr
+    actions:
+    - pull
+    comment: ImagePullSecret users can pull

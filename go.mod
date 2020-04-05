@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/cesanta/docker_auth/auth_server v0.0.0-20191208151258-df57ccaa8701
 	github.com/cesanta/glog v0.0.0-20150527111657-22eb27a0ae19
+	github.com/go-logr/logr v0.1.0
 	github.com/operator-framework/operator-sdk v0.16.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0

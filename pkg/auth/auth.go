@@ -16,16 +16,37 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
+const AuthType = "cr"
+
 type Authenticated struct {
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
+	Type      string                      `json:"type"`
+	Namespace string                      `json:"namespace"`
+	Name      string                      `json:"name"`
+	Intent    registryapi.ImageSecretType `json:"intent"`
+}
+
+type HashedPasswords []string
+
+func (l HashedPasswords) MatchPassword(pw string) bool {
+	for _, h := range l {
+		if bcrypt.CompareHashAndPassword([]byte(h), []byte(pw)) == nil {
+			return true
+		}
+	}
+	return false
+}
+
+type authRecord struct {
+	HashedPasswords
+	RotationDate  time.Time
+	Authenticated Authenticated
 }
 
 type ErrorLogger func(error)
 
 type Authenticator struct {
 	client client.Client
-	cache  map[string]*registryapi.ImagePullSecret
+	cache  map[string]*authRecord
 	lock   sync.Locker
 	log    ErrorLogger
 }
@@ -43,67 +64,73 @@ func NewAuthenticator(cfg *rest.Config, log ErrorLogger) (a *Authenticator, err 
 	if err != nil {
 		return
 	}
-	return &Authenticator{reader, map[string]*registryapi.ImagePullSecret{}, &sync.Mutex{}, log}, nil
+	return &Authenticator{reader, map[string]*authRecord{}, &sync.Mutex{}, log}, nil
 }
 
 func (a *Authenticator) Authenticate(user, passwd string) *Authenticated {
-	cr := a.findCR(user)
-	if cr != nil && matchPassword(cr.Status.Passwords, passwd) {
-		return &Authenticated{
-			Namespace: cr.Namespace,
-			Name:      cr.Name,
-		}
+	account := a.findAccount(user)
+	if account != nil && account.MatchPassword(passwd) {
+		return &account.Authenticated
 	}
 	return nil
 }
 
-func matchPassword(hashed []string, passwd string) bool {
-	for _, h := range hashed {
-		if bcrypt.CompareHashAndPassword([]byte(h), []byte(passwd)) == nil {
-			return true
-		}
-	}
-	return false
-}
-
-func (a *Authenticator) findCR(user string) (cr *registryapi.ImagePullSecret) {
-	userParts := strings.SplitN(user, "/", 3)
-	if len(userParts) != 3 {
+func (a *Authenticator) findAccount(username string) (account *authRecord) {
+	userParts := strings.SplitN(username, "/", 4)
+	if len(userParts) != 4 {
 		return // unsupported user name format
 	}
-	if cr = a.cache[user]; cr != nil {
+	if account = a.cache[username]; account != nil {
 		return // cached
 	}
 	namespace := userParts[0]
 	name := userParts[1]
-	fetchedCR := &registryapi.ImagePullSecret{}
+	sType := registryapi.ImageSecretType(userParts[2])
+	var fetchedCR registryapi.ImageSecret
+	switch sType {
+	case registryapi.TypePull:
+		fetchedCR = &registryapi.ImagePullSecret{}
+	case registryapi.TypePush:
+		fetchedCR = &registryapi.ImagePushSecret{}
+	default:
+		return // unsupported secret type
+	}
 	key := types.NamespacedName{Namespace: namespace, Name: name}
 	err := a.client.Get(context.TODO(), key, fetchedCR)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			a.log(err)
 		}
-	} else if isValid(fetchedCR) {
-		cr = fetchedCR
-		a.addToCache(user, cr)
+	} else if a.notExpired(fetchedCR.GetStatus().RotationDate.Time) {
+		account = &authRecord{
+			HashedPasswords: HashedPasswords(fetchedCR.GetStatus().Passwords),
+			RotationDate:    fetchedCR.GetStatus().RotationDate.Time,
+			Authenticated: Authenticated{
+				Type:      AuthType,
+				Namespace: fetchedCR.GetNamespace(),
+				Name:      fetchedCR.GetName(),
+				Intent:    sType,
+			},
+		}
+		a.addToCache(username, account)
 	}
 	return
 }
 
-func (a *Authenticator) addToCache(user string, cr *registryapi.ImagePullSecret) {
+func (a *Authenticator) addToCache(username string, account *authRecord) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	cache := map[string]*registryapi.ImagePullSecret{}
-	for usr, cr := range a.cache {
-		if isValid(cr) {
-			// drop old entries
-			cache[usr] = cr
+	cache := map[string]*authRecord{}
+	// drop old entries
+	for usr, cached := range a.cache {
+		if a.notExpired(cached.RotationDate) {
+			cache[usr] = cached
 		}
 	}
-	cache[user] = cr
+	cache[username] = account
 	a.cache = cache
 }
 
-func isValid(cr *registryapi.ImagePullSecret) bool {
-	return time.Now().Before(cr.Status.RotationDate.Add(time.Minute * 30))
+func (a *Authenticator) notExpired(rotationDate time.Time) bool {
+	return time.Now().Before(rotationDate.Add(time.Minute * 30))
 }

@@ -13,13 +13,16 @@ endef
 export TESTDOCKERFILE
 
 
-all: operator docker_auth
+all: operator docker_auth nginx
 
 operator:
 	docker build --force-rm -t image-registry-operator -f build/Dockerfile --target operator .
 
 docker_auth:
 	docker build --force-rm -t docker_auth -f build/Dockerfile-auth .
+
+nginx:
+	docker build --force-rm -t registry-nginx -f build/Dockerfile-nginx .
 
 unit-tests:
 	docker build --force-rm -f build/Dockerfile .
@@ -31,7 +34,7 @@ containerized-%: test-image
 	$(eval DOCKER ?= $(if $(shell docker -v),docker,podman))
 	$(DOCKER) run --rm --net host \
 		-v "`pwd`:/go/src/$(PKG)" \
-		-v "$$KUBECONFIG:/root/.kube/config" \
+		--mount "type=bind,src=$$KUBECONFIG,dst=/root/.kube/config" \
 		--entrypoint /bin/sh $(TEST_IMAGE) -c "make $*"
 
 test-image:
@@ -39,6 +42,8 @@ test-image:
 	echo "$$TESTDOCKERFILE" | docker build --force-rm -t $(TEST_IMAGE) -f - .
 
 generate:
+	#operator-sdk add api --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImagePushSecret
+	#operator-sdk add controller --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImagePushSecret
 	operator-sdk generate k8s
 	operator-sdk generate crds
 

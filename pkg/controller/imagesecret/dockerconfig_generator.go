@@ -1,4 +1,4 @@
-package imagepullsecret
+package imagesecret
 
 import (
 	"encoding/base64"

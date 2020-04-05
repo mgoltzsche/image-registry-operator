@@ -27,15 +27,11 @@ RUN adduser -u 5001 -G auth_server -S -h /auth_server_data auth_server
 USER auth_server:auth_server
 ENV HOME=/auth_server_data
 COPY --from=auth_server_build /auth_server /k8s-docker-authn.so /docker_auth/
+COPY build/auth_config.yml /config/auth_config.yml
 ENTRYPOINT ["/docker_auth/auth_server"]
-CMD ["/config/auth_config.yml"]
+CMD ["--v=2", "--alsologtostderr", "/config/auth_config.yml"]
 EXPOSE 5001
 
 # Test plugin binary compatibility
-FROM auth_server
-RUN printf 'server:\n  addr: ":5001"\ntoken:\n  issuer: "Acme auth server"\n  expiration: 900\nacl: []\n' > /tmp/auth_config.yml && \
-	printf 'plugin_authn:\n  plugin_path: "%s"' /docker_auth/k8s-docker-authn.so >> /tmp/auth_config.yml
 # Should fail with exit code 2 reported by plugin due to missing KUBECONFIG
-RUN timeout 3 /docker_auth/auth_server /tmp/auth_config.yml || [ $? -eq 2 ]
-
-FROM auth_server
+RUN timeout 3 /docker_auth/auth_server /config/auth_config.yml || [ $? -eq 2 ]
