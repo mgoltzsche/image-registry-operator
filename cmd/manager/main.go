@@ -11,10 +11,10 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
+	certmgr "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"github.com/mgoltzsche/image-registry-operator/pkg/apis"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller"
 	"github.com/mgoltzsche/image-registry-operator/version"
-
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
@@ -103,6 +103,10 @@ func main() {
 
 	// Setup Scheme for all resources
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "")
+		os.Exit(1)
+	}
+	if err := certmgr.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "")
 		os.Exit(1)
 	}

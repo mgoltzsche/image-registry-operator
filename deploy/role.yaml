@@ -71,6 +71,7 @@ rules:
   resources:
   - '*'
   - imagepushsecrets
+  - imageregistries
   verbs:
   - create
   - delete

@@ -30,5 +30,9 @@ spec:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
               value: "image-registry-operator"
+            - name: OPERATOR_DNS_ZONE
+              value: svc.example.org
+            - name: OPERATOR_DEFAULT_CLUSTER_ISSUER
+              value: registry-ca-issuer
       imagePullSecrets:
       - name: registry-deployment-pull-credentials

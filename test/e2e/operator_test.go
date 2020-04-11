@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	certmgr "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"github.com/mgoltzsche/image-registry-operator/pkg/apis"
 	operator "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
@@ -12,7 +13,10 @@ import (
 )
 
 func TestOperator(t *testing.T) {
-	err := framework.AddToFrameworkScheme(apis.AddToScheme, &operator.ImagePullSecretList{})
+	err := framework.AddToFrameworkScheme(apis.AddToScheme, &operator.ImageRegistryList{})
+	require.NoError(t, err)
+
+	err = framework.AddToFrameworkScheme(certmgr.AddToScheme, &certmgr.CertificateList{})
 	require.NoError(t, err)
 
 	ctx := framework.NewContext(t)
@@ -32,5 +36,8 @@ func TestOperator(t *testing.T) {
 	})
 	t.Run("ImagePushSecret", func(t *testing.T) {
 		testImagePushSecret(t, ctx, namespace)
+	})
+	t.Run("ImageRegistry", func(t *testing.T) {
+		testImageRegistry(t, ctx, namespace)
 	})
 }

@@ -77,8 +77,8 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, rotationC
 		}
 		return
 	})
-	require.True(t, len(status.Passwords) <= 2, "CR should have len(status.passwords) <= 2")
 	require.NoError(t, err, "wait for %T to update (rotation %d)", secretCR, rotationCount)
+	require.True(t, len(status.Passwords) <= 2, "CR should have len(status.passwords) <= 2")
 	secret := &corev1.Secret{}
 	err = framework.Global.Client.Get(context.TODO(), secretKey, secret)
 	require.NoError(t, err, "secret should exist")

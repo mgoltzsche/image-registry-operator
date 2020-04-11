@@ -6,15 +6,16 @@ require (
 	github.com/cesanta/docker_auth/auth_server v0.0.0-20191208151258-df57ccaa8701
 	github.com/cesanta/glog v0.0.0-20150527111657-22eb27a0ae19
 	github.com/go-logr/logr v0.1.0
+	github.com/jetstack/cert-manager v0.13.1
 	github.com/operator-framework/operator-sdk v0.16.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
-	golang.org/x/crypto v0.0.0-20191028145041-f83a4685e152
-	k8s.io/api v0.0.0
-	k8s.io/apimachinery v0.0.0
+	golang.org/x/crypto v0.0.0-20191202143827-86a70503ff7e
+	k8s.io/api v0.17.3
+	k8s.io/apimachinery v0.17.3
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d
-	sigs.k8s.io/controller-runtime v0.4.0
+	k8s.io/kube-openapi v0.0.0-20191107075043-30be4d16710a
+	sigs.k8s.io/controller-runtime v0.5.1-0.20200307095134-d0de78d9f1c1
 )
 
 // Pinned to kubernetes-1.16.2
