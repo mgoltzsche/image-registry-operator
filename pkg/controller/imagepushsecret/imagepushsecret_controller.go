@@ -23,7 +23,7 @@ func Add(mgr manager.Manager) error {
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return imagesecret.NewReconciler(mgr, log, imagesecret.ReconcileImageSecretConfig{
-		CRFactory:       func() registryapi.ImageSecret { return &registryapi.ImagePushSecret{} },
+		CRFactory:       func() registryapi.ImageSecretInterface { return &registryapi.ImagePushSecret{} },
 		Intent:          registryapi.TypePush,
 		SecretType:      corev1.SecretTypeOpaque,
 		DockerConfigKey: "config.json",

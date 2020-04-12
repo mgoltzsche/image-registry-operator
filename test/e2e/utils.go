@@ -47,10 +47,10 @@ func printEvents(t *testing.T, namespace string) {
 	evts := []string{}
 	now := time.Now()
 	for _, evt := range evtList.Items {
-		if evt.Type != "Normal" {
-			secondsAgo := now.Sub(evt.CreationTimestamp.Time).Seconds()
-			evts = append(evts, fmt.Sprintf("%4.0fs ago: %s/%s: %s: %s: %s", secondsAgo, evt.Regarding.Kind, evt.Regarding.Name, evt.Type, evt.Reason, evt.Note))
-		}
+		//if evt.Type != "Normal" {
+		secondsAgo := now.Sub(evt.CreationTimestamp.Time).Seconds()
+		evts = append(evts, fmt.Sprintf("%4.0fs ago: %s/%s: %s: %s: %s", secondsAgo, evt.Regarding.Kind, evt.Regarding.Name, evt.Type, evt.Reason, evt.Note))
+		//}
 	}
 	sort.Reverse(sort.StringSlice(evts))
 	for _, evt := range evts {

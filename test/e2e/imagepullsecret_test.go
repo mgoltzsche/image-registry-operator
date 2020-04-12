@@ -6,19 +6,17 @@ import (
 	operator "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func testImagePushSecret(t *testing.T, ctx *framework.Context, namespace string) {
+func testImagePushSecret(t *testing.T, ctx *framework.Context, registryRef *operator.ImageRegistryRef, hostname string) {
+	cr := &operator.ImagePushSecret{}
+	cr.Spec.RegistryRef = registryRef
+	cr.SetName("my-push-secret-cr")
 	testImageSecret(t, ctx, ImageSecretTestCase{
-		Type: operator.TypePush,
-		CR: &operator.ImagePushSecret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-push-secret-cr",
-				Namespace: namespace,
-			},
-		},
+		Type:            operator.TypePush,
+		CR:              cr,
 		SecretType:      corev1.SecretTypeOpaque,
 		DockerConfigKey: "config.json",
+		ExpectHostname:  hostname,
 	})
 }

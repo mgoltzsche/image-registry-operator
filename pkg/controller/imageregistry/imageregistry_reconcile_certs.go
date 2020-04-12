@@ -50,7 +50,7 @@ func (r *ReconcileImageRegistry) reconcileTlsCert(instance *registryv1alpha1.Ima
 	tlsIssuer := r.tlsIssuerRefForCR(instance)
 	if tlsIssuer != nil {
 		dnsNames := r.dnsNamesForCR(instance)
-		tlsCertName := tlsSecretNameForCR(instance)
+		tlsCertName := TLSSecretNameForCR(instance)
 		tlsCertCR := &certmgr.Certificate{}
 		err = r.upsert(instance, tlsCertName, tlsCertCR, reqLogger, func() bool {
 			needsUpdate := tlsCertCR.Spec.CommonName != dnsNames[0]

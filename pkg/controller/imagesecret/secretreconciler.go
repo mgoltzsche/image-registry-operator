@@ -3,18 +3,22 @@ package imagesecret
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	"github.com/mgoltzsche/image-registry-operator/pkg/auth"
+	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imageregistry"
+	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -26,7 +30,10 @@ const (
 	RequeueDelayErrorSeconds = 5 * time.Second
 	ConditionReady           = "ready"
 	ConditionSynced          = "synced"
+	ReasonRegistryNotFound   = "RegistryNotFound"
+	EnvDefaultRegistryName   = "OPERATOR_DEFAULT_REGISTRY_NAME"
 	AnnotationSecretRotation = "registry.mgoltzsche.github.com/rotation"
+	secretCaCertKey          = "ca.crt"
 )
 
 type ReconcileImageSecretConfig struct {
@@ -38,24 +45,39 @@ type ReconcileImageSecretConfig struct {
 
 // NewReconciler returns a new reconcile.Reconciler
 func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSecretConfig) reconcile.Reconciler {
+	defaultRegistryName := os.Getenv(EnvDefaultRegistryName)
+	if defaultRegistryName == "" {
+		defaultRegistryName = "registry"
+	}
+	ns, err := k8sutil.GetOperatorNamespace()
+	if err != nil {
+		ns = os.Getenv("WATCH_NAMESPACE")
+		if ns == "" || ns == "*" {
+			panic("could not detect operator namespace")
+		}
+	}
 	return &ReconcileImageSecret{
-		client: mgr.GetClient(),
-		scheme: mgr.GetScheme(),
-		logger: logger,
-		cfg:    cfg,
+		client:          mgr.GetClient(),
+		scheme:          mgr.GetScheme(),
+		cache:           mgr.GetCache(),
+		logger:          logger,
+		cfg:             cfg,
+		defaultRegistry: registryapi.ImageRegistryRef{Name: defaultRegistryName, Namespace: ns},
 	}
 }
 
-type SecretResourceFactory func() registryapi.ImageSecret
+type SecretResourceFactory func() registryapi.ImageSecretInterface
 
 // blank assignment to verify that ReconcileImageSecret implements reconcile.Reconciler
 var _ reconcile.Reconciler = &ReconcileImageSecret{}
 
 type ReconcileImageSecret struct {
-	client client.Client
-	scheme *runtime.Scheme
-	logger logr.Logger
-	cfg    ReconcileImageSecretConfig
+	client          client.Client
+	scheme          *runtime.Scheme
+	cache           cache.Cache
+	logger          logr.Logger
+	cfg             ReconcileImageSecretConfig
+	defaultRegistry registryapi.ImageRegistryRef
 }
 
 // Reconcile reads that state of the cluster for a ImagePullSecret object and makes changes based on the state read
@@ -106,17 +128,39 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	pwAge := time.Now().Sub(instanceStatus.RotationDate.Time)
+	registry, err := r.getRegistryForCR(instance)
+	if err != nil {
+		instanceStatus.Conditions.SetCondition(status.Condition{
+			Type:    ConditionReady,
+			Status:  corev1.ConditionFalse,
+			Reason:  ReasonRegistryNotFound,
+			Message: err.Error(),
+		})
+		instanceStatus.Conditions.SetCondition(status.Condition{
+			Type:    ConditionSynced,
+			Status:  corev1.ConditionFalse,
+			Reason:  ReasonRegistryNotFound,
+			Message: err.Error(),
+		})
+		err = r.client.Status().Update(context.TODO(), instance)
+		return reconcile.Result{}, err
+	}
+
+	hostnameCaChanged := string(secret.Data["hostname"]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
+	pwAge := time.Duration(0)
+	if instanceStatus.RotationDate != nil {
+		pwAge = time.Now().Sub(instanceStatus.RotationDate.Time)
+	}
 	secretRotation, _ := strconv.Atoi(secret.Annotations[AnnotationSecretRotation])
-	if pwAge > rotationInterval || secretRotation == 0 {
+	needsRenewal := instanceStatus.RotationDate == nil || pwAge > rotationInterval
+	if needsRenewal || hostnameCaChanged {
 		reqLogger.Info("Updating Secret", "Secret.Namespace", found.Namespace, "Secret.Name", found.Name)
-		if instanceStatus.Rotation != uint64(secretRotation+1) {
-			err = r.rotatePassword(instance, secret)
+		if int(instanceStatus.Rotation) <= secretRotation {
+			err = r.rotatePassword(instance, registry, secret)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
 			if create {
-				instanceStatus.RotationDate = metav1.Time{time.Time{}.Add(time.Second)}
 				instanceStatus.Conditions.SetCondition(status.Condition{
 					Type:   ConditionReady,
 					Status: corev1.ConditionFalse,
@@ -138,7 +182,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 			}
 		}
 		instanceStatus.Rotation++
-		instanceStatus.RotationDate = metav1.Time{time.Now()}
+		instanceStatus.RotationDate = &metav1.Time{time.Now()}
 		instanceStatus.Conditions.SetCondition(status.Condition{
 			Type:   ConditionReady,
 			Status: corev1.ConditionTrue,
@@ -160,7 +204,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 	return reconcile.Result{RequeueAfter: rotationInterval - pwAge + 30*time.Second}, nil
 }
 
-func (r *ReconcileImageSecret) rotatePassword(cr registryapi.ImageSecret, secret *corev1.Secret) (err error) {
+func (r *ReconcileImageSecret) rotatePassword(cr registryapi.ImageSecretInterface, reg *targetRegistry, secret *corev1.Secret) (err error) {
 	crStatus := cr.GetStatus()
 	rotationCount := crStatus.Rotation + 1
 	activeHashedPws := crStatus.Passwords
@@ -185,19 +229,22 @@ func (r *ReconcileImageSecret) rotatePassword(cr registryapi.ImageSecret, secret
 		secret.Annotations = map[string]string{}
 	}
 	secret.Annotations[AnnotationSecretRotation] = strconv.Itoa(int(crStatus.Rotation + 1))
+	secret.Data = map[string][]byte{}
 	secret.Data["user"] = user
 	secret.Data["password"] = passwd
 	secret.Data["nextpassword"] = nextPasswd
-	secret.Data[r.cfg.DockerConfigKey] = generateDockerConfigJson("https://myregistry", string(user), string(passwd))
+	secret.Data["hostname"] = []byte(reg.Hostname)
+	secret.Data["ca.crt"] = reg.CA
+	secret.Data[r.cfg.DockerConfigKey] = generateDockerConfigJson(reg.Hostname, string(user), string(passwd))
 	crStatus.Passwords = activeHashedPws
 	return
 }
 
-func (r *ReconcileImageSecret) newUserNameForCR(cr registryapi.ImageSecret, rotation uint64) []byte {
+func (r *ReconcileImageSecret) newUserNameForCR(cr registryapi.ImageSecretInterface, rotation uint64) []byte {
 	return []byte(fmt.Sprintf("%s/%s/%s/%d", cr.GetNamespace(), cr.GetName(), r.cfg.Intent, rotation))
 }
 
-func (r *ReconcileImageSecret) newSecretForCR(cr registryapi.ImageSecret) *corev1.Secret {
+func (r *ReconcileImageSecret) newSecretForCR(cr registryapi.ImageSecretInterface) *corev1.Secret {
 	labels := map[string]string{
 		"app": cr.GetName(),
 	}
@@ -210,6 +257,44 @@ func (r *ReconcileImageSecret) newSecretForCR(cr registryapi.ImageSecret) *corev
 		Type: r.cfg.SecretType,
 		Data: map[string][]byte{},
 	}
+}
+
+func (r *ReconcileImageSecret) getRegistryForCR(cr registryapi.ImageSecretInterface) (reg *targetRegistry, err error) {
+	registry := cr.GetRegistryRef()
+	if registry == nil {
+		registry = &r.defaultRegistry
+	}
+	registryKey := types.NamespacedName{Name: registry.Name, Namespace: registry.Namespace}
+	return r.getRegistry(registryKey)
+}
+
+func (r *ReconcileImageSecret) getRegistry(registryKey types.NamespacedName) (reg *targetRegistry, err error) {
+	ctx := context.TODO()
+	registryCR := &registryapi.ImageRegistry{}
+	if err = r.cache.Get(ctx, registryKey, registryCR); err != nil {
+		return
+	}
+	if !registryCR.Status.Conditions.IsTrueFor(imageregistry.ConditionReady) {
+		return nil, fmt.Errorf("ImageRegistry %s is not ready", registryKey)
+	}
+	key := types.NamespacedName{Name: imageregistry.TLSSecretNameForCR(registryCR), Namespace: registryKey.Namespace}
+	secret := &corev1.Secret{}
+	if err = r.cache.Get(ctx, key, secret); err != nil {
+		return
+	}
+	caCert, ok := secret.Data[secretCaCertKey]
+	if !ok {
+		return nil, fmt.Errorf("CA cert Secret %s does not contain %s", key, secretCaCertKey)
+	}
+	return &targetRegistry{
+		Hostname: registryCR.Status.Hostname,
+		CA:       caCert,
+	}, nil
+}
+
+type targetRegistry struct {
+	Hostname string
+	CA       []byte
 }
 
 func shiftPassword(old []string, newPasswd []byte) (hashed []string, err error) {

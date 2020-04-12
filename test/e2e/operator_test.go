@@ -31,13 +31,19 @@ func TestOperator(t *testing.T) {
 	err = e2eutil.WaitForOperatorDeployment(t, f.KubeClient, namespace, "image-registry-operator", 1, time.Second*5, time.Second*30)
 	require.NoError(t, err)
 
-	t.Run("ImagePullSecret", func(t *testing.T) {
-		testImagePullSecret(t, ctx, namespace)
-	})
-	t.Run("ImagePushSecret", func(t *testing.T) {
-		testImagePushSecret(t, ctx, namespace)
-	})
 	t.Run("ImageRegistry", func(t *testing.T) {
-		testImageRegistry(t, ctx, namespace)
+		registryCR := createImageRegistry(t, ctx)
+		registryRef := &operator.ImageRegistryRef{
+			Name:      registryCR.Name,
+			Namespace: registryCR.Namespace,
+		}
+
+		t.Run("ImagePullSecret", func(t *testing.T) {
+			testImagePullSecret(t, ctx, registryRef, registryCR.Status.Hostname)
+		})
+
+		t.Run("ImagePushSecret", func(t *testing.T) {
+			testImagePushSecret(t, ctx, registryRef, registryCR.Status.Hostname)
+		})
 	})
 }

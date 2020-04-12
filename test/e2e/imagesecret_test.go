@@ -20,9 +20,10 @@ import (
 
 type ImageSecretTestCase struct {
 	Type            operator.ImageSecretType
-	CR              operator.ImageSecret
+	CR              operator.ImageSecretInterface
 	SecretType      corev1.SecretType
 	DockerConfigKey string
+	ExpectHostname  string
 }
 
 func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase) {
@@ -30,6 +31,7 @@ func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase
 
 	// Test secret creation
 	secretCR := c.CR
+	secretCR.SetNamespace(f.Namespace)
 	namespace := secretCR.GetNamespace()
 	err := f.Client.Create(context.TODO(), secretCR, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
 	require.NoError(t, err, "create CR")
@@ -49,9 +51,9 @@ func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase
 	})
 }
 
-func triggerCredentialRotation(t *testing.T, secretCR operator.ImageSecret) {
+func triggerCredentialRotation(t *testing.T, secretCR operator.ImageSecretInterface) {
 	t.Logf("triggering %T %s password rotation...", secretCR, secretCR.GetName())
-	secretCR.GetStatus().RotationDate = metav1.Time{time.Now().Add(-24 * 30 * time.Hour)}
+	secretCR.GetStatus().RotationDate = &metav1.Time{time.Now().Add(-24 * 30 * time.Hour)}
 	err := framework.Global.Client.Status().Update(context.TODO(), secretCR)
 	require.NoError(t, err, "trigger %T %s password rotation", secretCR, secretCR.GetName())
 }
@@ -66,14 +68,19 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, rotationC
 		if status.Rotation != rotationCount {
 			c = append(c, fmt.Sprintf("$.status.rotation == %d (was %v)", rotationCount, status.Rotation))
 		}
-		if status.RotationDate.Time.Unix() == 0 {
+		if status.RotationDate == nil {
 			c = append(c, "$.status.rotationDate should be set")
 		}
 		if len(status.Passwords) == 0 {
 			c = append(c, "len($.status.passwords) > 0")
 		}
 		if !status.Conditions.IsTrueFor("ready") {
-			c = append(c, "ready")
+			cond := status.Conditions.GetCondition("ready")
+			if cond == nil {
+				c = append(c, "ready")
+			} else {
+				c = append(c, fmt.Sprintf("ready{%s: %s}", cond.Reason, cond.Message))
+			}
 		}
 		return
 	})
@@ -83,7 +90,9 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, rotationC
 	err = framework.Global.Client.Get(context.TODO(), secretKey, secret)
 	require.NoError(t, err, "secret should exist")
 	require.Equal(t, c.SecretType, secret.Type, "resulting secret's type")
-	usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, "https://myregistry")
+	require.NotNil(t, secret.Data["ca.crt"], "resulting secret should have ca.crt entry")
+	require.Equal(t, c.ExpectHostname, string(secret.Data["hostname"]), "resulting secret's hostname entry")
+	usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, c.ExpectHostname)
 	for _, hashedPw := range status.Passwords {
 		err = bcrypt.CompareHashAndPassword([]byte(hashedPw), []byte(pw))
 		if err == nil {

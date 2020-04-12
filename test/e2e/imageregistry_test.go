@@ -18,11 +18,12 @@ import (
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func testImageRegistry(t *testing.T, ctx *framework.Context, namespace string) {
+func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.ImageRegistry) {
 	f := framework.Global
+	namespace := f.Namespace
 
 	// Insert ImageRegistry CR
-	cr := &operator.ImageRegistry{
+	cr = &operator.ImageRegistry{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-registry",
 			Namespace: namespace,
@@ -48,10 +49,13 @@ func testImageRegistry(t *testing.T, ctx *framework.Context, namespace string) {
 	require.NoError(t, err, "create ImageRegistry")
 
 	// Wait for CA certificate to become ready
-	waitForCertReady(t, namespace, cr.Name+"-ca")
+	waitForCertReady(t, namespace, cr.Name+"-ca", cr.Spec.Auth.IssuerRef)
 
 	// Wait for TLS certificate to become ready
-	waitForCertReady(t, namespace, cr.Name+"-tls")
+	waitForCertReady(t, namespace, cr.Name+"-tls", &operator.CertIssuerRefSpec{
+		Name: cr.Name + "-ca-issuer",
+		Kind: "Issuer",
+	})
 
 	// Wait for ImageRegistry to become synced (fail fast)
 	err = WaitForCondition(t, cr, cr.GetName(), namespace, 10*time.Second, func() (c []string) {
@@ -66,9 +70,9 @@ func testImageRegistry(t *testing.T, ctx *framework.Context, namespace string) {
 			}
 			c = append(c, status)
 		}
-		expectedUrl := fmt.Sprintf("https://%s.%s.svc.cluster.local", cr.Name, namespace)
-		if cr.Status.URL != expectedUrl {
-			c = append(c, fmt.Sprintf("actualURL(%s) != expectedURL(%s)", cr.Status.URL, expectedUrl))
+		expectedHostname := fmt.Sprintf("%s.%s.svc.cluster.local", cr.Name, namespace)
+		if cr.Status.Hostname != expectedHostname {
+			c = append(c, fmt.Sprintf("actualHostname(%s) != expectedHostname(%s)", cr.Status.Hostname, expectedHostname))
 		}
 		return
 	})
@@ -102,11 +106,17 @@ func testImageRegistry(t *testing.T, ctx *framework.Context, namespace string) {
 		s.ReadyReplicas == replicas &&
 		s.UpdatedReplicas == replicas
 	require.True(t, ready, "StatefulSet %s should be ready after ImageRegistry has become ready", cr.Name)
+	return
 }
 
-func waitForCertReady(t *testing.T, namespace, certName string) {
+func waitForCertReady(t *testing.T, namespace, certName string, expectedIssuer *operator.CertIssuerRefSpec) {
 	cert := &certmgr.Certificate{}
-	err := WaitForCondition(t, cert, certName, namespace, 10*time.Second, func() (c []string) {
+	err := WaitForCondition(t, cert, certName, namespace, 20*time.Second, func() (c []string) {
+		expectIssuer := fmt.Sprintf("%s/%s", expectedIssuer.Kind, expectedIssuer.Name)
+		actualIssuer := fmt.Sprintf("%s/%s", cert.Spec.IssuerRef.Kind, cert.Spec.IssuerRef.Name)
+		require.Equal(t, expectIssuer, actualIssuer, "cert %s issuer", certName)
+		require.Equal(t, certName, cert.Spec.SecretName, "cert %s secret name", certName)
+
 		for _, cond := range cert.Status.Conditions {
 			if cond.Type == certmgr.CertificateConditionReady {
 				if cond.Status != certmgrmeta.ConditionTrue {

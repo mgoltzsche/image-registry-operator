@@ -46,7 +46,7 @@ type CertIssuerRefSpec struct {
 type ImageRegistryStatus struct {
 	Conditions         status.Conditions `json:"conditions,omitempty"`
 	ObservedGeneration int64             `json:"observedGeneration,omitempty"`
-	URL                string            `json:"url,omitempty"`
+	Hostname           string            `json:"hostname,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

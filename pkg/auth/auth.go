@@ -86,7 +86,7 @@ func (a *Authenticator) findAccount(username string) (account *authRecord) {
 	namespace := userParts[0]
 	name := userParts[1]
 	sType := registryapi.ImageSecretType(userParts[2])
-	var fetchedCR registryapi.ImageSecret
+	var fetchedCR registryapi.ImageSecretInterface
 	switch sType {
 	case registryapi.TypePull:
 		fetchedCR = &registryapi.ImagePullSecret{}

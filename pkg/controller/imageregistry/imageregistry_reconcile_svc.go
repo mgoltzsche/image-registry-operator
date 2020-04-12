@@ -125,7 +125,7 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 		},
 		{
 			Name:         "tls",
-			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: tlsSecretNameForCR(cr)}},
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: TLSSecretNameForCR(cr)}},
 		},
 		{
 			Name:         "registry-auth-token-ca",

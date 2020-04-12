@@ -141,12 +141,12 @@ func (r *ReconcileImageRegistry) Reconcile(request reconcile.Request) (reconcile
 		}
 	}
 	instance.Status.Conditions = conditions
-	url := r.externalUrlForCR(instance)
+	hostname := r.externalHostnameForCR(instance)
 	changedGeneration := instance.Status.ObservedGeneration != instance.Generation
-	changedURL := instance.Status.URL != url
-	if changedCond || changedGeneration || changedURL {
+	changedHost := instance.Status.Hostname != hostname
+	if changedCond || changedGeneration || changedHost {
 		instance.Status.ObservedGeneration = instance.Generation
-		instance.Status.URL = url
+		instance.Status.Hostname = hostname
 		if e := r.client.Status().Update(context.TODO(), instance); e != nil && err == nil {
 			err = e
 		}
@@ -204,7 +204,7 @@ func pvcNameForCR(cr *registryv1alpha1.ImageRegistry) string {
 	return cr.Name + "-pvc"
 }
 
-func tlsSecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
+func TLSSecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
 	return cr.Name + "-tls"
 }
 
