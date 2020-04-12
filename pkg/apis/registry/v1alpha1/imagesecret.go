@@ -44,7 +44,7 @@ type ImageSecretSpec struct {
 // ImageRegistryRef refers to an ImageRegistry
 type ImageRegistryRef struct {
 	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // ImageSecretStatus defines the observed state of ImagePullSecret

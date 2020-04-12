@@ -7,8 +7,8 @@ plugin_authn:
 token:
   issuer: "Docker Registry Auth Service"  # Must match issuer in the Registry config.
   expiration: 900
-  certificate: "/config/certs/tls.crt"
-  key: "/config/certs/tls.key"
+  certificate: "/config/auth-cert/tls.crt"
+  key: "/config/auth-cert/tls.key"
 
 acl:
   - match:

@@ -14,7 +14,7 @@ import (
 type ImageRegistrySpec struct {
 	Replicas              *int32                    `json:"replicas,omitempty"`
 	PersistentVolumeClaim PersistentVolumeClaimSpec `json:"persistentVolumeClaim"`
-	TLS                   TLSSpec                   `json:"tls"`
+	TLS                   TLSSpec                   `json:"tls,omitempty"`
 	Auth                  AuthSpec                  `json:"auth,omitempty"`
 }
 

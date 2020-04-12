@@ -69,10 +69,9 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 				status = fmt.Sprintf("synced{%s}", cond.Message)
 			}
 			c = append(c, status)
-		}
-		expectedHostname := fmt.Sprintf("%s.%s.svc.cluster.local", cr.Name, namespace)
-		if cr.Status.Hostname != expectedHostname {
-			c = append(c, fmt.Sprintf("actualHostname(%s) != expectedHostname(%s)", cr.Status.Hostname, expectedHostname))
+		} else {
+			expectedHostname := fmt.Sprintf("%s.%s.svc.cluster.local", cr.Name, namespace)
+			require.Equal(t, expectedHostname, cr.Status.Hostname, "$.status.hostname")
 		}
 		return
 	})

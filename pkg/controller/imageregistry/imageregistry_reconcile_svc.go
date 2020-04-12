@@ -133,7 +133,7 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 		},
 	}
 	authVolumeMounts := []corev1.VolumeMount{
-		{Name: "registry-auth-token-ca", MountPath: "/config/certs"},
+		{Name: "registry-auth-token-ca", MountPath: "/config/auth-cert"},
 	}
 	if cr.Spec.Auth.ConfigMapName != nil {
 		authConfigMapVol := "auth-config"
@@ -173,13 +173,13 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 						Env: []corev1.EnvVar{
 							{Name: "REGISTRY_HTTP_ADDR", Value: ":5000"},
 							{Name: "REGISTRY_HTTP_RELATIVEURLS", Value: "true"},
-							{Name: "REGISTRY_HTTP_STORAGE_DELETE_ENABLED", Value: "true"},
-							{Name: "REGISTRY_HTTP_AUTH", Value: "token"},
-							{Name: "REGISTRY_HTTP_AUTH_TOKEN_REALM", Value: r.externalUrlForCR(cr) + "/auth/token"},
-							{Name: "REGISTRY_HTTP_AUTH_TOKEN_REDIRECT", Value: "true"},
-							{Name: "REGISTRY_HTTP_AUTH_TOKEN_ISSUER", Value: "Docker Registry Auth Service"},
-							{Name: "REGISTRY_HTTP_AUTH_TOKEN_SERVICE", Value: "Docker Registry"},
-							{Name: "REGISTRY_HTTP_AUTH_TOKEN_ROOTCERTBUNDLE", Value: "/root/auth-cert/ca.crt"},
+							{Name: "REGISTRY_STORAGE_DELETE_ENABLED", Value: "true"},
+							{Name: "REGISTRY_AUTH", Value: "token"},
+							{Name: "REGISTRY_AUTH_TOKEN_REALM", Value: r.externalUrlForCR(cr) + "/auth/token"},
+							{Name: "REGISTRY_AUTH_TOKEN_AUTOREDIRECT", Value: "true"},
+							{Name: "REGISTRY_AUTH_TOKEN_ISSUER", Value: "Docker Registry Auth Service"},
+							{Name: "REGISTRY_AUTH_TOKEN_SERVICE", Value: "Docker Registry"},
+							{Name: "REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE", Value: "/root/auth-cert/ca.crt"},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "images", MountPath: "/var/lib/registry"},

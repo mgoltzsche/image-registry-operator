@@ -263,6 +263,8 @@ func (r *ReconcileImageSecret) getRegistryForCR(cr registryapi.ImageSecretInterf
 	registry := cr.GetRegistryRef()
 	if registry == nil {
 		registry = &r.defaultRegistry
+	} else if registry.Namespace == "" {
+		registry.Namespace = cr.GetNamespace()
 	}
 	registryKey := types.NamespacedName{Name: registry.Name, Namespace: registry.Namespace}
 	return r.getRegistry(registryKey)

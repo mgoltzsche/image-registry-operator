@@ -1,5 +1,7 @@
 resources:
 - crds/registry.mgoltzsche.github.com_imagepullsecrets_crd.yaml
+- crds/registry.mgoltzsche.github.com_imagepushsecrets_crd.yaml
+- crds/registry.mgoltzsche.github.com_imageregistries_crd.yaml
 - service_account.yaml
 - role.yaml
 - role_binding.yaml

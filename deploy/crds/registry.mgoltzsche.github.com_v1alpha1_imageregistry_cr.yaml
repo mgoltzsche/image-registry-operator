@@ -1,7 +1,19 @@
 apiVersion: registry.mgoltzsche.github.com/v1alpha1
 kind: ImageRegistry
 metadata:
-  name: example-imageregistry
+  name: registry
 spec:
-  # Add fields here
-  size: 3
+  replicas: 1
+  auth:
+    #configMapName: my-auth-configmap
+    issuerRef:
+      name: registry-ca-issuer
+      kind: ClusterIssuer
+  tls: {} # separate issuerRef could be specified here, otherwise auth's is used
+  persistentVolumeClaim:
+    #storageClassName: mysc
+    accessModes:
+    - ReadWriteOnce # If >1 replicas ever required ReadWriteMany must be set (which is the default)
+    resources:
+      requests:
+        storage: 1Gi
