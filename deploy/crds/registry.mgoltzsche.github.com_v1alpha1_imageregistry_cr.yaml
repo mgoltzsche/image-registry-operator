@@ -2,6 +2,7 @@ apiVersion: registry.mgoltzsche.github.com/v1alpha1
 kind: ImageRegistry
 metadata:
   name: registry
+  namespace: build
 spec:
   replicas: 1
   auth:

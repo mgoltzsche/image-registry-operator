@@ -38,8 +38,8 @@ RBAC:
 ### Why use basic auth instead of a JWT?
 * Registry access can be denied immediately by removing the CR (JWT would still be valid until it expires - however docker's JWT may still be valid anyway).
 * With JWT secret renewal interval would need to be relatively short.
-* Currently cesanta/docker-auth doesn't support Bearer Token (JWT) authentication for external or plugin authentication but basic auth only.
-* Docker proceeds to work with docker-auth's JWT afterwards anyway.
+* Currently cesanta/docker_auth doesn't support Bearer Token (JWT) authentication for external or plugin authentication but basic auth only.
+  (Docker proceeds with docker_auth's short-lived JWT afterwards anyway)
 
 ### Why use separate ImagePullSecret/ImagePushSecret CRDs instead of a single RegistryAccount CRD with a push flag/subtype?
 * Ensure pull secret format differs from push secret format as well as the pull password differs from the push password. (pull secrets are more widely distributed (to nodes) than push secrets and the latter have a higher security impact)

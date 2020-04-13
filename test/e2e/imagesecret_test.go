@@ -42,6 +42,9 @@ func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase
 	t.Run("authenticator", func(t *testing.T) {
 		testAuthenticator(t, ctx, namespace, secretCR.GetName(), c.Type, usr, pw)
 	})
+	t.Run("authn plugin", func(t *testing.T) {
+		testAuthnPlugin(t, ctx, namespace, secretCR.GetName(), c.Type, usr, pw)
+	})
 
 	t.Run("credential rotation", func(t *testing.T) {
 		for i := 2; i < 4; i++ {
@@ -74,12 +77,12 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, rotationC
 		if len(status.Passwords) == 0 {
 			c = append(c, "len($.status.passwords) > 0")
 		}
-		if !status.Conditions.IsTrueFor("ready") {
-			cond := status.Conditions.GetCondition("ready")
+		if !status.Conditions.IsTrueFor("Ready") {
+			cond := status.Conditions.GetCondition("Ready")
 			if cond == nil {
-				c = append(c, "ready")
+				c = append(c, "Ready")
 			} else {
-				c = append(c, fmt.Sprintf("ready{%s: %s}", cond.Reason, cond.Message))
+				c = append(c, fmt.Sprintf("Ready{%s: %s}", cond.Reason, cond.Message))
 			}
 		}
 		return

@@ -49,7 +49,7 @@ generate:
 
 run-e2e-tests:
 	kubectl create namespace $(TEST_NAMESPACE)
-	kubectl apply -f ./deploy/registry-ca-cluster-issuer.yaml
+	kubectl apply -f ./deploy/registry_ca_cluster_issuer.yaml
 	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --up-local; \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE); \

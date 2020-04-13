@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	ConditionSynced         = status.ConditionType("synced")
-	ConditionReady          = status.ConditionType("ready")
+	ConditionSynced         = status.ConditionType("Synced")
+	ConditionReady          = status.ConditionType("Ready")
 	ReasonFailedSync        = status.ConditionReason("FailedSync")
 	ReasonUpdating          = status.ConditionReason("Updating")
 	EnvDefaultClusterIssuer = "OPERATOR_DEFAULT_CLUSTER_ISSUER"

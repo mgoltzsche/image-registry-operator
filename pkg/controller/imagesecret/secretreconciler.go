@@ -28,12 +28,14 @@ import (
 const (
 	RequeueDelaySeconds      = 30 * time.Second
 	RequeueDelayErrorSeconds = 5 * time.Second
-	ConditionReady           = "ready"
-	ConditionSynced          = "synced"
+	ConditionReady           = "Ready"
+	ConditionSynced          = "Synced"
 	ReasonRegistryNotFound   = "RegistryNotFound"
 	EnvDefaultRegistryName   = "OPERATOR_DEFAULT_REGISTRY_NAME"
+	EnvRotationInterval      = "OPERATOR_SECRET_ROTATION_INTERVAL"
 	AnnotationSecretRotation = "registry.mgoltzsche.github.com/rotation"
 	secretCaCertKey          = "ca.crt"
+	defaultRotationInterval  = 24 * time.Hour
 )
 
 type ReconcileImageSecretConfig struct {
@@ -56,13 +58,23 @@ func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSe
 			panic("could not detect operator namespace")
 		}
 	}
+	rotationInterval := defaultRotationInterval
+	rotationIntervalStr := os.Getenv(EnvRotationInterval)
+	if rotationIntervalStr != "" && rotationIntervalStr != "0" {
+		var err error
+		rotationInterval, err = time.ParseDuration(rotationIntervalStr)
+		if err != nil {
+			panic(fmt.Sprintf("Unsupported value in env var %s: %v", EnvRotationInterval, err))
+		}
+	}
 	return &ReconcileImageSecret{
-		client:          mgr.GetClient(),
-		scheme:          mgr.GetScheme(),
-		cache:           mgr.GetCache(),
-		logger:          logger,
-		cfg:             cfg,
-		defaultRegistry: registryapi.ImageRegistryRef{Name: defaultRegistryName, Namespace: ns},
+		client:           mgr.GetClient(),
+		scheme:           mgr.GetScheme(),
+		cache:            mgr.GetCache(),
+		logger:           logger,
+		cfg:              cfg,
+		defaultRegistry:  registryapi.ImageRegistryRef{Name: defaultRegistryName, Namespace: ns},
+		rotationInterval: rotationInterval,
 	}
 }
 
@@ -72,12 +84,13 @@ type SecretResourceFactory func() registryapi.ImageSecretInterface
 var _ reconcile.Reconciler = &ReconcileImageSecret{}
 
 type ReconcileImageSecret struct {
-	client          client.Client
-	scheme          *runtime.Scheme
-	cache           cache.Cache
-	logger          logr.Logger
-	cfg             ReconcileImageSecretConfig
-	defaultRegistry registryapi.ImageRegistryRef
+	client           client.Client
+	scheme           *runtime.Scheme
+	cache            cache.Cache
+	logger           logr.Logger
+	cfg              ReconcileImageSecretConfig
+	defaultRegistry  registryapi.ImageRegistryRef
+	rotationInterval time.Duration
 }
 
 // Reconcile reads that state of the cluster for a ImagePullSecret object and makes changes based on the state read
@@ -112,8 +125,6 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	rotationInterval := time.Minute * 1
-
 	putSecret := func(ctx context.Context, o runtime.Object) error { return r.client.Create(ctx, o) }
 	create := true
 
@@ -142,7 +153,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 			Reason:  ReasonRegistryNotFound,
 			Message: err.Error(),
 		})
-		err = r.client.Status().Update(context.TODO(), instance)
+		r.client.Status().Update(context.TODO(), instance)
 		return reconcile.Result{}, err
 	}
 
@@ -152,7 +163,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		pwAge = time.Now().Sub(instanceStatus.RotationDate.Time)
 	}
 	secretRotation, _ := strconv.Atoi(secret.Annotations[AnnotationSecretRotation])
-	needsRenewal := instanceStatus.RotationDate == nil || pwAge > rotationInterval
+	needsRenewal := instanceStatus.RotationDate == nil || pwAge > r.rotationInterval
 	if needsRenewal || hostnameCaChanged {
 		reqLogger.Info("Updating Secret", "Secret.Namespace", found.Namespace, "Secret.Name", found.Name)
 		if int(instanceStatus.Rotation) <= secretRotation {
@@ -197,11 +208,11 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		}
 
 		// Secret & CR updated - schedule renewal
-		return reconcile.Result{RequeueAfter: rotationInterval}, nil
+		return reconcile.Result{RequeueAfter: r.rotationInterval}, nil
 	}
 
 	// Secret & CR are up-to-date and untouched - schedule next renewal check
-	return reconcile.Result{RequeueAfter: rotationInterval - pwAge + 30*time.Second}, nil
+	return reconcile.Result{RequeueAfter: r.rotationInterval - pwAge + 30*time.Second}, nil
 }
 
 func (r *ReconcileImageSecret) rotatePassword(cr registryapi.ImageSecretInterface, reg *targetRegistry, secret *corev1.Secret) (err error) {

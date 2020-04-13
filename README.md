@@ -1,15 +1,44 @@
 image-registry-operator
 ===
 
-A controller that watches `ImagePullSecret` CRs and generates concrete secrets for them.
-The CR usage allows to declare docker registry authentication or delegate it using RBAC rules.  
+A Kubernetes operator that maintains in-cluster docker registries as well as
+corresponding pull and push secrets.
+For granular authorization [docker_auth](https://github.com/cesanta/docker_auth) is integrated.
 
-**TODO:**
-* Rename go package to correspond to the new repository name.
-* Support CRD `ImageRegistry`.
-* Rename `ImagePullSecret` CRD to `ImageRegistryAccess` or add additional `ImagePushSecret` CRD.
-  (push secret should have `config` property to avoid using it as pullSecret and allow to easily mount it in image build jobs)
-* Provide optional PodPreset(s) to implicitly mount `default-image-push-secret` into e.g. every skaffold-kaniko pod.
+# Kubernetes cluster requirements
+
+* LoadBalancer support
+* CoreDNS' static IP (`10.96.0.10`) must be configured as first nameserver on every node (avoid DNS loops!) (to resolve registry on nodes).
+* CoreDNS should be configured with the `k8s_external` plugin exposing LoadBalancer Services under your public DNS zone (`OPERATOR_DNS_ZONE`).
+
+# Installation
+
+Install the operator (you need to specify `OPERATOR_DNS_ZONE` env var with your public DNS zone):
+```
+kubectl apply -k ./deploy
+```
+
+# Usage example
+
+Create a (the default) `ImageRegistry` (maintains a StatefulSet and LoadBalancer Service):
+```
+kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imageregistry_cr.yaml
+```
+
+Create an `ImagePushSecret` (maintains Secret `<CR_NAME>-image-push-secret`):
+```
+kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imagepushsecret_cr.yaml
+```
+
+Create an `ImagePullSecret` (maintains Secret `<CR_NAME>-image-pull-secret`):
+```
+kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imagepullsecret_cr.yaml
+```
+
+Configure your local host to use the previously created `ImagePushSecret`'s Docker config:
+```
+kubectl get -n build secret example-imagepushsecret-image-push-secret -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
+```
 
 # How it works
 For each `ImagePullSecret` CR a dockerconfig secret is maintained.

@@ -34,5 +34,7 @@ spec:
               value: svc.example.org
             - name: OPERATOR_DEFAULT_CLUSTER_ISSUER
               value: registry-ca-issuer
+            - name: OPERATOR_SECRET_ROTATION_INTERVAL
+              value: "24h"
       imagePullSecrets:
       - name: registry-deployment-pull-credentials

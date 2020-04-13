@@ -31,7 +31,7 @@ type k8sDockerAuthnPlugin struct {
 
 // Authenticate authenticates a request against Kubernetes image registry operator resources.
 func (p *k8sDockerAuthnPlugin) Authenticate(user string, password api.PasswordString) (bool, api.Labels, error) {
-	if authenticated := p.auth.Authenticate(user, password.String()); authenticated != nil {
+	if authenticated := p.auth.Authenticate(user, string(password)); authenticated != nil {
 		labels := map[string][]string{
 			labelType:      []string{authenticated.Type},
 			labelName:      []string{authenticated.Name},

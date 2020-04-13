@@ -23,13 +23,13 @@ var authnBuildMutex = &sync.Mutex{}
 
 func testAuthenticator(t *testing.T, ctx *framework.Context, namespace, name string, intent registryapi.ImageSecretType, user, pw string) {
 	t.Run("missing authn", func(t *testing.T) {
-		authn(t, "", "", false)
+		runAuthnClient(t, "", "", false)
 	})
 	t.Run("invalid authn", func(t *testing.T) {
-		authn(t, "unknown", "invalid", false)
+		runAuthnClient(t, "unknown", "invalid", false)
 	})
 	t.Run("valid authn", func(t *testing.T) {
-		b := authn(t, user, pw, true)
+		b := runAuthnClient(t, user, pw, true)
 		payload := auth.Authenticated{}
 		err := json.Unmarshal(b, &payload)
 		require.NoError(t, err, "unmarshal authn result: %s", string(b))
@@ -40,7 +40,7 @@ func testAuthenticator(t *testing.T, ctx *framework.Context, namespace, name str
 	})
 }
 
-func authn(t *testing.T, usr, pw string, succeed bool) (b []byte) {
+func runAuthnClient(t *testing.T, usr, pw string, succeed bool) (b []byte) {
 	cmd := authnClientCmd(t, "-u", usr)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBE_REGISTRY_PASSWORD=%s", pw))
 	var buf bytes.Buffer

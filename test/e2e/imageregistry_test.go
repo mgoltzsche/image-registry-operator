@@ -62,11 +62,11 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 		if cr.Status.ObservedGeneration != cr.Generation {
 			c = append(c, fmt.Sprintf("$.status.observedGeneration == %d (was %v)", cr.Generation, cr.Status.ObservedGeneration))
 		}
-		if !cr.Status.Conditions.IsTrueFor("synced") {
-			status := "synced"
-			cond := cr.Status.Conditions.GetCondition("synced")
+		if !cr.Status.Conditions.IsTrueFor("Synced") {
+			status := "Synced"
+			cond := cr.Status.Conditions.GetCondition("Synced")
 			if cond != nil && cond.Message != "" {
-				status = fmt.Sprintf("synced{%s}", cond.Message)
+				status = fmt.Sprintf("Synced{%s}", cond.Message)
 			}
 			c = append(c, status)
 		} else {
@@ -79,11 +79,11 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 
 	// Wait for ImageRegistry to become ready
 	err = WaitForCondition(t, cr, cr.Name, namespace, 120*time.Second, func() (c []string) {
-		if !cr.Status.Conditions.IsTrueFor("ready") {
-			status := "ready"
-			cond := cr.Status.Conditions.GetCondition("ready")
+		if !cr.Status.Conditions.IsTrueFor("Ready") {
+			status := "Ready"
+			cond := cr.Status.Conditions.GetCondition("Ready")
 			if cond != nil && cond.Message != "" {
-				status = fmt.Sprintf("ready{%s}", cond.Message)
+				status = fmt.Sprintf("Ready{%s}", cond.Message)
 			}
 			c = append(c, status)
 		}
