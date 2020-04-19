@@ -42,8 +42,8 @@ test-image:
 	echo "$$TESTDOCKERFILE" | docker build --force-rm -t $(TEST_IMAGE) -f - .
 
 generate:
-	#operator-sdk add api --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageRegistry
-	#operator-sdk add controller --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageRegistry
+	#operator-sdk add api --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageRegistryAccount
+	#operator-sdk add controller --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageRegistryAccount
 	operator-sdk generate k8s
 	operator-sdk generate crds
 
@@ -60,3 +60,6 @@ install-tools: download-deps
 
 download-deps:
 	go mod download
+
+clean:
+	rm -rf build/_output

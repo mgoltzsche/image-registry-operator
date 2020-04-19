@@ -15,32 +15,34 @@ func (r *ReconcileImageRegistry) reconcileCaCertAndIssuer(instance *registryv1al
 	authTokenCaIssuer := r.authCaIssuerRefForCR(instance)
 	if authTokenCaIssuer != nil {
 		labels := selectorLabelsForCR(instance)
-		caCertName := caSecretNameForCR(instance)
 		caCertCR := &certmgr.Certificate{}
-		err = r.upsert(instance, caCertName, caCertCR, reqLogger, func() bool {
+		caCertCR.Name = caSecretNameForCR(instance)
+		caCertCR.Namespace = instance.Namespace
+		err = r.upsert(instance, caCertCR, reqLogger, func() error {
 			caCertCR.Labels = labels
 			caCertCR.Spec = certmgr.CertificateSpec{
 				IsCA:       true,
 				Duration:   &metav1.Duration{Duration: 24 * 365 * 5 * time.Hour},
 				CommonName: fmt.Sprintf("%s.%s.svc", instance.Name, instance.Namespace),
-				SecretName: caCertName,
+				SecretName: caCertCR.Name,
 				IssuerRef:  toObjectReference(authTokenCaIssuer),
 			}
-			return false
+			return nil
 		})
 		if err != nil {
 			return
 		}
-		issuerName := caIssuerNameForCR(instance)
 		issuerCR := &certmgr.Issuer{}
-		err = r.upsert(instance, issuerName, issuerCR, reqLogger, func() bool {
+		issuerCR.Name = caIssuerNameForCR(instance)
+		issuerCR.Namespace = instance.Namespace
+		err = r.upsert(instance, issuerCR, reqLogger, func() error {
 			issuerCR.Labels = labels
 			issuerCR.Spec = certmgr.IssuerSpec{
 				IssuerConfig: certmgr.IssuerConfig{
-					CA: &certmgr.CAIssuer{SecretName: caCertName},
+					CA: &certmgr.CAIssuer{SecretName: caCertCR.Name},
 				},
 			}
-			return false
+			return nil
 		})
 	}
 	return
@@ -50,10 +52,10 @@ func (r *ReconcileImageRegistry) reconcileTlsCert(instance *registryv1alpha1.Ima
 	tlsIssuer := r.tlsIssuerRefForCR(instance)
 	if tlsIssuer != nil {
 		dnsNames := r.dnsNamesForCR(instance)
-		tlsCertName := TLSSecretNameForCR(instance)
 		tlsCertCR := &certmgr.Certificate{}
-		err = r.upsert(instance, tlsCertName, tlsCertCR, reqLogger, func() bool {
-			needsUpdate := tlsCertCR.Spec.CommonName != dnsNames[0]
+		tlsCertCR.Name = TLSSecretNameForCR(instance)
+		tlsCertCR.Namespace = instance.Namespace
+		err = r.upsert(instance, tlsCertCR, reqLogger, func() error {
 			tlsCertCR.Labels = selectorLabelsForCR(instance)
 			tlsCertCR.Spec = certmgr.CertificateSpec{
 				IsCA:        false,
@@ -61,10 +63,10 @@ func (r *ReconcileImageRegistry) reconcileTlsCert(instance *registryv1alpha1.Ima
 				RenewBefore: &metav1.Duration{Duration: 24 * 20 * time.Hour},
 				CommonName:  dnsNames[0],
 				DNSNames:    dnsNames,
-				SecretName:  tlsCertName,
+				SecretName:  tlsCertCR.Name,
 				IssuerRef:   toObjectReference(tlsIssuer),
 			}
-			return needsUpdate
+			return nil
 		})
 	}
 	return err

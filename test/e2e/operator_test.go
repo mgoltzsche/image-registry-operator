@@ -31,6 +31,10 @@ func TestOperator(t *testing.T) {
 	err = e2eutil.WaitForOperatorDeployment(t, f.KubeClient, namespace, "image-registry-operator", 1, time.Second*5, time.Second*30)
 	require.NoError(t, err)
 
+	t.Run("ImageRegistryAccount", func(t *testing.T) {
+		testImageRegistryAccountAuth(t, ctx)
+	})
+
 	t.Run("ImageRegistry", func(t *testing.T) {
 		registryCR := createImageRegistry(t, ctx)
 		registryRef := &operator.ImageRegistryRef{

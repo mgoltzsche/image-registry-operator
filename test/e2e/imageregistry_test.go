@@ -78,7 +78,7 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 	require.NoError(t, err, "wait for ImageRegistry %s to become synced", cr.Name)
 
 	// Wait for ImageRegistry to become ready
-	err = WaitForCondition(t, cr, cr.Name, namespace, 120*time.Second, func() (c []string) {
+	err = WaitForCondition(t, cr, cr.Name, namespace, 90*time.Second, func() (c []string) {
 		if !cr.Status.Conditions.IsTrueFor("Ready") {
 			status := "Ready"
 			cond := cr.Status.Conditions.GetCondition("Ready")
@@ -110,7 +110,7 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 
 func waitForCertReady(t *testing.T, namespace, certName string, expectedIssuer *operator.CertIssuerRefSpec) {
 	cert := &certmgr.Certificate{}
-	err := WaitForCondition(t, cert, certName, namespace, 20*time.Second, func() (c []string) {
+	err := WaitForCondition(t, cert, certName, namespace, 15*time.Second, func() (c []string) {
 		expectIssuer := fmt.Sprintf("%s/%s", expectedIssuer.Kind, expectedIssuer.Name)
 		actualIssuer := fmt.Sprintf("%s/%s", cert.Spec.IssuerRef.Kind, cert.Spec.IssuerRef.Name)
 		require.Equal(t, expectIssuer, actualIssuer, "cert %s issuer", certName)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"reflect"
 
 	"github.com/go-logr/logr"
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
@@ -13,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -77,6 +75,9 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	r.reconcileTasks = []reconcileTask{
 		r.reconcileCaCertAndIssuer,
 		r.reconcileTlsCert,
+		r.reconcileServiceAccount,
+		r.reconcileRole,
+		r.reconcileRoleBinding,
 		r.reconcilePersistentVolumeClaim,
 		r.reconcileService,
 		r.reconcileStatefulSet,
@@ -160,27 +161,17 @@ type namespacedObject interface {
 	metav1.Object
 }
 
-func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, name string, obj namespacedObject, reqLogger logr.Logger, modify func() bool) (err error) {
-	typeName := reflect.TypeOf(obj).Elem().Name()
-	key := types.NamespacedName{Name: name, Namespace: owner.Namespace}
-	err = r.client.Get(context.TODO(), key, obj)
-	if obj.GetAnnotations() == nil {
-		obj.SetAnnotations(map[string]string{})
-	}
-	if errors.IsNotFound(err) {
-		reqLogger.Info("Creating "+typeName, typeName+".Namespace", key.Namespace, typeName+".Name", key.Name)
-		modify()
-		obj.SetNamespace(key.Namespace)
-		obj.SetName(key.Name)
+func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, obj namespacedObject, reqLogger logr.Logger, modify func() error) (err error) {
+	_, err = controllerutil.CreateOrUpdate(context.TODO(), r.client, obj, func() (e error) {
+		if obj.GetAnnotations() == nil {
+			obj.SetAnnotations(map[string]string{})
+		}
 		obj.SetLabels(selectorLabelsForCR(owner))
-		if err = controllerutil.SetControllerReference(owner, obj, r.scheme); err != nil {
+		if e = controllerutil.SetControllerReference(owner, obj, r.scheme); e != nil {
 			return
 		}
-		err = r.client.Create(context.TODO(), obj)
-	} else if err == nil && modify() {
-		reqLogger.Info("Updating "+typeName, typeName+".Namespace", key.Namespace, typeName+".Name", key.Name)
-		err = r.client.Update(context.TODO(), obj)
-	}
+		return modify()
+	})
 	return
 }
 
@@ -214,4 +205,8 @@ func caSecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
 
 func caIssuerNameForCR(cr *registryv1alpha1.ImageRegistry) string {
 	return cr.Name + "-ca-issuer"
+}
+
+func serviceAccountNameForCR(cr *registryv1alpha1.ImageRegistry) string {
+	return cr.Name + "-imageregistry"
 }

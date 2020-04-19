@@ -70,6 +70,7 @@ rules:
   - registry.mgoltzsche.github.com
   resources:
   - '*'
+  - imageregistryaccounts
   verbs:
   - create
   - delete

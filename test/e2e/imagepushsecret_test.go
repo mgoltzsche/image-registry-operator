@@ -13,8 +13,8 @@ func testImagePullSecret(t *testing.T, ctx *framework.Context, registryRef *oper
 	cr.Spec.RegistryRef = registryRef
 	cr.SetName("my-pull-secret-cr")
 	testImageSecret(t, ctx, ImageSecretTestCase{
-		Type:            operator.TypePull,
 		CR:              cr,
+		AccessMode:      operator.TypePull,
 		SecretType:      corev1.SecretTypeDockerConfigJson,
 		DockerConfigKey: ".dockerconfigjson",
 		ExpectHostname:  hostname,

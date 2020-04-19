@@ -53,5 +53,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	// Watch for changes to secondary resource ImageRegistryAccount and requeue the owner ImagePushSecret
+	err = c.Watch(&source.Kind{Type: &registryapi.ImageRegistryAccount{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &registryapi.ImagePushSecret{},
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

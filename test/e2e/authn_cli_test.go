@@ -11,37 +11,15 @@ import (
 	"sync"
 	"testing"
 
-	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
-	"github.com/mgoltzsche/image-registry-operator/pkg/auth"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
-	framework "github.com/operator-framework/operator-sdk/pkg/test"
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 var authnBuildMutex = &sync.Mutex{}
 
-func testAuthenticator(t *testing.T, ctx *framework.Context, namespace, name string, intent registryapi.ImageSecretType, user, pw string) {
-	t.Run("missing authn", func(t *testing.T) {
-		runAuthnClient(t, "", "", false)
-	})
-	t.Run("invalid authn", func(t *testing.T) {
-		runAuthnClient(t, "unknown", "invalid", false)
-	})
-	t.Run("valid authn", func(t *testing.T) {
-		b := runAuthnClient(t, user, pw, true)
-		payload := auth.Authenticated{}
-		err := json.Unmarshal(b, &payload)
-		require.NoError(t, err, "unmarshal authn result: %s", string(b))
-		require.Equal(t, "cr", payload.Type, "authn result type")
-		require.Equal(t, name, payload.Name, "authn result name")
-		require.Equal(t, namespace, payload.Namespace, "authn result namespace")
-		require.Equal(t, intent, payload.Intent, "authn result intent")
-	})
-}
-
-func runAuthnClient(t *testing.T, usr, pw string, succeed bool) (b []byte) {
-	cmd := authnClientCmd(t, "-u", usr)
+func runAuthnCLI(t *testing.T, ns, usr, pw string, succeed bool) (labels map[string][]string) {
+	cmd := authnClientCmd(t, "-n", ns, "-u", usr)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBE_REGISTRY_PASSWORD=%s", pw))
 	var buf bytes.Buffer
 	var errBuf bytes.Buffer
@@ -49,11 +27,16 @@ func runAuthnClient(t *testing.T, usr, pw string, succeed bool) (b []byte) {
 	cmd.Stderr = &errBuf
 	err := cmd.Run()
 	if succeed {
-		require.NoError(t, err, "should authenticate %q, stdout: %s", usr, errBuf.String())
+		require.NoError(t, err, "authn CLI stderr: %s", errBuf.String())
 	} else {
-		require.Error(t, err, "should fail to authenticate %q, stdout: %s", usr, errBuf.String())
+		require.Error(t, err, "authn CLI stdout: %s", buf.String())
 	}
-	return buf.Bytes()
+	if err == nil {
+		labels = map[string][]string{}
+		err = json.Unmarshal(buf.Bytes(), &labels)
+		require.NoError(t, err, "unmarshal authn CLI stdout: %s", buf.String())
+	}
+	return
 }
 
 func authnClientCmd(t *testing.T, args ...string) *exec.Cmd {

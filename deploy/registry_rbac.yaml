@@ -1,27 +1,24 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: image-registry
 rules:
 - apiGroups:
   - registry.mgoltzsche.github.com
   resources:
-  - imagepullsecrets
-  - imagepushsecrets
+  - imageregistryaccounts
   verbs:
   - get
   - list
   - watch
 ---
 
-# TODO: let operator create this per ImageRegistry or
-#   come up with a solution that does not require the authn module to access other namespace's resources
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: default
 ---
-kind: ClusterRoleBinding
+kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: image-registry
@@ -29,6 +26,6 @@ subjects:
 - kind: ServiceAccount
   name: default
 roleRef:
-  kind: ClusterRole
+  kind: Role
   name: image-registry
   apiGroup: rbac.authorization.k8s.io

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"os"
 
 	"github.com/cesanta/docker_auth/auth_server/api"
@@ -31,16 +32,8 @@ type k8sDockerAuthnPlugin struct {
 
 // Authenticate authenticates a request against Kubernetes image registry operator resources.
 func (p *k8sDockerAuthnPlugin) Authenticate(user string, password api.PasswordString) (bool, api.Labels, error) {
-	if authenticated := p.auth.Authenticate(user, string(password)); authenticated != nil {
-		labels := map[string][]string{
-			labelType:      []string{authenticated.Type},
-			labelName:      []string{authenticated.Name},
-			labelNamespace: []string{authenticated.Namespace},
-			labelIntent:    []string{string(authenticated.Intent)},
-		}
-		return true, labels, nil
-	}
-	return false, nil, nil
+	labels, err := p.auth.Authenticate(user, string(password))
+	return true, labels, err
 }
 
 // Stop finalizes resources in preparation for shutdown.
@@ -55,6 +48,8 @@ func newK8sDockerAuthnPlugin() k8sDockerAuthnPlugin {
 	var cfg *rest.Config
 	var err error
 	errLogger := func(err error) { glog.Error(err) }
+
+	// Init kubeconfig
 	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
 		glog.Infof("starting %s plugin using in-cluster kubeconfig", pluginName)
@@ -71,8 +66,19 @@ func newK8sDockerAuthnPlugin() k8sDockerAuthnPlugin {
 			os.Exit(3)
 		}
 	}
+
+	// Find authenticator namespace
+	namespace := os.Getenv("NAMESPACE")
+	if namespace == "" {
+		b, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+		if err != nil {
+			panic("Cannot detect namespace: " + err.Error())
+		}
+		namespace = string(b)
+	}
+
 	cfg.UserAgent = "Image Registry Auth"
-	a, err := auth.NewAuthenticator(cfg, errLogger)
+	a, err := auth.NewAuthenticator(cfg, namespace, errLogger)
 	if err != nil {
 		glog.Error(err)
 		os.Exit(4)

@@ -17,6 +17,7 @@ type ImageSecretInterface interface {
 	runtime.Object
 	metav1.Object
 	GetRegistryRef() *ImageRegistryRef
+	GetRegistryAccessMode() ImageSecretType
 	GetStatus() *ImageSecretStatus
 }
 
@@ -49,12 +50,10 @@ type ImageRegistryRef struct {
 
 // ImageSecretStatus defines the observed state of ImagePullSecret
 type ImageSecretStatus struct {
-	// The currently active bcrypt encoded passwords - should be two.
-	Passwords []string `json:"passwords,omitempty"`
-	// Password rotation amount.
-	Rotation uint64 `json:"rotation,omitempty"`
-	// Date on which the latest password has been generated.
-	RotationDate *metav1.Time `json:"rotationDate,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions status.Conditions `json:"conditions,omitempty"`
+	// Date on which the latest password has been generated.
+	RotationDate *metav1.Time `json:"rotationDate,omitempty"`
+	// Password rotation amount.
+	Rotation int64 `json:"rotation,omitempty"`
 }

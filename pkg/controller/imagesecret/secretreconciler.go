@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-logr/logr"
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
-	"github.com/mgoltzsche/image-registry-operator/pkg/auth"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imageregistry"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/status"
@@ -29,13 +28,13 @@ const (
 	RequeueDelaySeconds      = 30 * time.Second
 	RequeueDelayErrorSeconds = 5 * time.Second
 	ConditionReady           = "Ready"
-	ConditionSynced          = "Synced"
 	ReasonRegistryNotFound   = "RegistryNotFound"
+	ReasonFailedSync         = status.ConditionReason("FailedSync")
 	EnvDefaultRegistryName   = "OPERATOR_DEFAULT_REGISTRY_NAME"
-	EnvRotationInterval      = "OPERATOR_SECRET_ROTATION_INTERVAL"
+	EnvSecretTTL             = "OPERATOR_SECRET_TTL"
 	AnnotationSecretRotation = "registry.mgoltzsche.github.com/rotation"
 	secretCaCertKey          = "ca.crt"
-	defaultRotationInterval  = 24 * time.Hour
+	defaultAccountTTL        = 24 * time.Hour
 )
 
 type ReconcileImageSecretConfig struct {
@@ -58,13 +57,16 @@ func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSe
 			panic("could not detect operator namespace")
 		}
 	}
-	rotationInterval := defaultRotationInterval
-	rotationIntervalStr := os.Getenv(EnvRotationInterval)
-	if rotationIntervalStr != "" && rotationIntervalStr != "0" {
+	accountTTL := defaultAccountTTL
+	accountTTLStr := os.Getenv(EnvSecretTTL)
+	if accountTTLStr != "" {
 		var err error
-		rotationInterval, err = time.ParseDuration(rotationIntervalStr)
+		accountTTL, err = time.ParseDuration(accountTTLStr)
+		if err == nil && accountTTL < 1 {
+			err = fmt.Errorf("ttl < 1")
+		}
 		if err != nil {
-			panic(fmt.Sprintf("Unsupported value in env var %s: %v", EnvRotationInterval, err))
+			panic(fmt.Sprintf("Unsupported value in env var %s: %v", EnvSecretTTL, err))
 		}
 	}
 	return &ReconcileImageSecret{
@@ -74,7 +76,8 @@ func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSe
 		logger:           logger,
 		cfg:              cfg,
 		defaultRegistry:  registryapi.ImageRegistryRef{Name: defaultRegistryName, Namespace: ns},
-		rotationInterval: rotationInterval,
+		accountTTL:       accountTTL,
+		rotationInterval: accountTTL / 2,
 	}
 }
 
@@ -91,6 +94,7 @@ type ReconcileImageSecret struct {
 	cfg              ReconcileImageSecretConfig
 	defaultRegistry  registryapi.ImageRegistryRef
 	rotationInterval time.Duration
+	accountTTL       time.Duration
 }
 
 // Reconcile reads that state of the cluster for a ImagePullSecret object and makes changes based on the state read
@@ -117,28 +121,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Secret object
-	secret := r.newSecretForCR(instance)
-
-	// Set ImagePullSecret instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	putSecret := func(ctx context.Context, o runtime.Object) error { return r.client.Create(ctx, o) }
-	create := true
-
-	// Check if the Secret already exists
-	found := &corev1.Secret{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: secret.Name, Namespace: secret.Namespace}, found)
-	if err == nil {
-		secret = found
-		putSecret = func(ctx context.Context, o runtime.Object) error { return r.client.Update(ctx, o) }
-		create = false
-	} else if !errors.IsNotFound(err) {
-		return reconcile.Result{}, err
-	}
-
+	// Fetch the registry
 	registry, err := r.getRegistryForCR(instance)
 	if err != nil {
 		instanceStatus.Conditions.SetCondition(status.Condition{
@@ -147,127 +130,135 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 			Reason:  ReasonRegistryNotFound,
 			Message: err.Error(),
 		})
-		instanceStatus.Conditions.SetCondition(status.Condition{
-			Type:    ConditionSynced,
-			Status:  corev1.ConditionFalse,
-			Reason:  ReasonRegistryNotFound,
-			Message: err.Error(),
-		})
 		r.client.Status().Update(context.TODO(), instance)
 		return reconcile.Result{}, err
 	}
 
-	hostnameCaChanged := string(secret.Data["hostname"]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
-	pwAge := time.Duration(0)
-	if instanceStatus.RotationDate != nil {
-		pwAge = time.Now().Sub(instanceStatus.RotationDate.Time)
+	// Fetch ImageRegistryAccount
+	account := &registryapi.ImageRegistryAccount{}
+	account.Name = accountNameForCR(instance)
+	account.Namespace = registry.Namespace
+	accountExists, err := r.get(context.TODO(), account)
+	if err != nil {
+		return reconcile.Result{}, err
 	}
-	secretRotation, _ := strconv.Atoi(secret.Annotations[AnnotationSecretRotation])
-	needsRenewal := instanceStatus.RotationDate == nil || pwAge > r.rotationInterval
-	if needsRenewal || hostnameCaChanged {
-		reqLogger.Info("Updating Secret", "Secret.Namespace", found.Namespace, "Secret.Name", found.Name)
-		if int(instanceStatus.Rotation) <= secretRotation {
-			err = r.rotatePassword(instance, registry, secret)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
-			if create {
-				instanceStatus.Conditions.SetCondition(status.Condition{
-					Type:   ConditionReady,
-					Status: corev1.ConditionFalse,
-				})
-			}
-			instanceStatus.Conditions.SetCondition(status.Condition{
-				Type:    ConditionSynced,
+
+	// Fetch Secret
+	secret := &corev1.Secret{}
+	secret.Name = fmt.Sprintf("%s-image-%s-secret", instance.GetName(), r.cfg.Intent)
+	secret.Namespace = instance.GetNamespace()
+	secretExists, err := r.get(context.TODO(), secret)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Update ImageRegistryAccount & Secret
+	hostnameCaChanged := string(secret.Data["hostname"]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
+	needsRenewal := time.Now().Sub(account.CreationTimestamp.Time) > r.rotationInterval
+	secretOutOfSync := secret.Annotations == nil || secret.Annotations[AnnotationSecretRotation] != strconv.FormatInt(instance.GetStatus().Rotation, 10)
+	if !accountExists || !secretExists || secretOutOfSync || needsRenewal || hostnameCaChanged {
+		err = r.rotatePassword(instance, registry, secret, reqLogger)
+		if err != nil {
+			if instanceStatus.Conditions.SetCondition(status.Condition{
+				Type:    ConditionReady,
 				Status:  corev1.ConditionFalse,
-				Reason:  "SecretOutOfSync",
-				Message: "Secret is not in sync with CR",
-			})
-			err = r.client.Status().Update(context.TODO(), instance)
-			if err != nil {
-				return reconcile.Result{}, err
+				Reason:  ReasonFailedSync,
+				Message: err.Error(),
+			}) {
+				r.client.Status().Update(context.TODO(), instance)
 			}
-			err = putSecret(context.TODO(), secret)
-			if err != nil {
-				return reconcile.Result{}, err
-			}
+			return reconcile.Result{}, err
 		}
-		instanceStatus.Rotation++
-		instanceStatus.RotationDate = &metav1.Time{time.Now()}
-		instanceStatus.Conditions.SetCondition(status.Condition{
-			Type:   ConditionReady,
-			Status: corev1.ConditionTrue,
-		})
-		instanceStatus.Conditions.SetCondition(status.Condition{
-			Type:   ConditionSynced,
-			Status: corev1.ConditionTrue,
-		})
+	}
+
+	if instanceStatus.Conditions.SetCondition(status.Condition{
+		Type:   ConditionReady,
+		Status: corev1.ConditionTrue,
+	}) {
 		err = r.client.Status().Update(context.TODO(), instance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-
-		// Secret & CR updated - schedule renewal
-		return reconcile.Result{RequeueAfter: r.rotationInterval}, nil
 	}
 
 	// Secret & CR are up-to-date and untouched - schedule next renewal check
-	return reconcile.Result{RequeueAfter: r.rotationInterval - pwAge + 30*time.Second}, nil
+	return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *ReconcileImageSecret) rotatePassword(cr registryapi.ImageSecretInterface, reg *targetRegistry, secret *corev1.Secret) (err error) {
-	crStatus := cr.GetStatus()
-	rotationCount := crStatus.Rotation + 1
-	activeHashedPws := crStatus.Passwords
-	user := r.newUserNameForCR(cr, rotationCount)
-	passwd := secret.Data["nextpassword"]
-	if crStatus.Conditions.IsFalseFor(ConditionSynced) && len(crStatus.Passwords) > 0 {
-		// Remove last added hashed password which did not make it into the secret
-		crStatus.Passwords = crStatus.Passwords[0 : len(crStatus.Passwords)-1]
+func (r *ReconcileImageSecret) get(ctx context.Context, obj runtime.Object) (bool, error) {
+	key, err := client.ObjectKeyFromObject(obj)
+	if err != nil {
+		return false, err
 	}
+	err = r.client.Get(ctx, key, obj)
+	if errors.IsNotFound(err) {
+		return false, nil
+	}
+	return true, err
+}
 
-	if passwd == nil || !auth.HashedPasswords(crStatus.Passwords).MatchPassword(string(passwd)) {
-		passwd = generatePassword()
-		if activeHashedPws, err = shiftPassword(activeHashedPws, passwd); err != nil {
-			return
-		}
-	}
-	nextPasswd := generatePassword()
-	if activeHashedPws, err = shiftPassword(activeHashedPws, nextPasswd); err != nil {
+func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretInterface, registry *targetRegistry, secret *corev1.Secret, reqLogger logr.Logger) (err error) {
+	newPassword := generatePassword()
+	newPasswordHash, err := bcryptPassword(newPassword)
+	if err != nil {
 		return
 	}
+
+	// Increment CR rotation count.
+	// This must happen before account and secret are written to avoid
+	// replacing an existing account - handling accounts immutable.
+	instance.GetStatus().Rotation++
+	instance.GetStatus().RotationDate = &metav1.Time{time.Now()}
+	if err = r.client.Status().Update(context.TODO(), instance); err != nil {
+		return
+	}
+	account := &registryapi.ImageRegistryAccount{}
+	account.Name = accountNameForCR(instance)
+	account.Namespace = registry.Namespace
+	account.Spec.TTL = &metav1.Duration{r.accountTTL}
+	account.Spec.Password = string(newPasswordHash)
+	account.Spec.Labels = map[string][]string{
+		"namespace":  []string{instance.GetNamespace()},
+		"name":       []string{instance.GetName()},
+		"accessMode": []string{string(instance.GetRegistryAccessMode())},
+	}
+	if err = controllerutil.SetControllerReference(instance, account, r.scheme); err != nil {
+		return
+	}
+	reqLogger.Info("Creating ImageRegistryAccount", "ImageRegistryAccount.Namespace", account.Namespace, "ImageRegistryAccount.Name", account.Name)
+	err = r.client.Create(context.TODO(), account)
+	if err != nil {
+		// Fail with error if account exists
+		// (doing the next attempt with incremented rotation count)
+		return
+	}
+
 	if secret.Annotations == nil {
 		secret.Annotations = map[string]string{}
 	}
-	secret.Annotations[AnnotationSecretRotation] = strconv.Itoa(int(crStatus.Rotation + 1))
+	secret.Type = r.cfg.SecretType
+	secret.Annotations[AnnotationSecretRotation] = strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	secret.Data = map[string][]byte{}
-	secret.Data["user"] = user
-	secret.Data["password"] = passwd
-	secret.Data["nextpassword"] = nextPasswd
-	secret.Data["hostname"] = []byte(reg.Hostname)
-	secret.Data["ca.crt"] = reg.CA
-	secret.Data[r.cfg.DockerConfigKey] = generateDockerConfigJson(reg.Hostname, string(user), string(passwd))
-	crStatus.Passwords = activeHashedPws
+	secret.Data["username"] = []byte(account.Name)
+	secret.Data["password"] = newPassword
+	secret.Data["hostname"] = []byte(registry.Hostname)
+	secret.Data["ca.crt"] = registry.CA
+	secret.Data[r.cfg.DockerConfigKey] = generateDockerConfigJson(registry.Hostname, account.Name, string(newPassword))
+	if err = controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
+		return
+	}
+	if len(secret.UID) == 0 {
+		reqLogger.Info("Creating Secret", "Secret.Namespace", secret.Namespace, "Secret.Name", secret.Name)
+		err = r.client.Create(context.TODO(), secret)
+	} else {
+		reqLogger.Info("Updating Secret", "Secret.Namespace", secret.Namespace, "Secret.Name", secret.Name)
+		err = r.client.Update(context.TODO(), secret)
+	}
 	return
 }
 
-func (r *ReconcileImageSecret) newUserNameForCR(cr registryapi.ImageSecretInterface, rotation uint64) []byte {
-	return []byte(fmt.Sprintf("%s/%s/%s/%d", cr.GetNamespace(), cr.GetName(), r.cfg.Intent, rotation))
-}
-
-func (r *ReconcileImageSecret) newSecretForCR(cr registryapi.ImageSecretInterface) *corev1.Secret {
-	labels := map[string]string{
-		"app": cr.GetName(),
-	}
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-image-%s-secret", cr.GetName(), r.cfg.Intent),
-			Namespace: cr.GetNamespace(),
-			Labels:    labels,
-		},
-		Type: r.cfg.SecretType,
-		Data: map[string][]byte{},
-	}
+func accountNameForCR(cr registryapi.ImageSecretInterface) string {
+	return fmt.Sprintf("%s.%s.%s.%d", cr.GetRegistryAccessMode(), cr.GetNamespace(), cr.GetName(), cr.GetStatus().Rotation)
 }
 
 func (r *ReconcileImageSecret) getRegistryForCR(cr registryapi.ImageSecretInterface) (reg *targetRegistry, err error) {
@@ -300,24 +291,14 @@ func (r *ReconcileImageSecret) getRegistry(registryKey types.NamespacedName) (re
 		return nil, fmt.Errorf("CA cert Secret %s does not contain %s", key, secretCaCertKey)
 	}
 	return &targetRegistry{
-		Hostname: registryCR.Status.Hostname,
-		CA:       caCert,
+		Namespace: registryCR.GetNamespace(),
+		Hostname:  registryCR.Status.Hostname,
+		CA:        caCert,
 	}, nil
 }
 
 type targetRegistry struct {
-	Hostname string
-	CA       []byte
-}
-
-func shiftPassword(old []string, newPasswd []byte) (hashed []string, err error) {
-	b, err := bcryptPassword(newPasswd)
-	if err != nil {
-		return nil, err
-	}
-	hashed = append(old, string(b))
-	if len(hashed) > 2 {
-		hashed = hashed[1:]
-	}
-	return hashed, nil
+	Namespace string
+	Hostname  string
+	CA        []byte
 }

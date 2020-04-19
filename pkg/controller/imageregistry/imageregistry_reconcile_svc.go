@@ -22,54 +22,72 @@ const (
 
 func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
 	svc := &corev1.Service{}
-	return r.upsert(instance, instance.Name, svc, reqLogger, func() bool {
+	svc.Name = instance.Name
+	svc.Namespace = instance.Namespace
+	return r.upsert(instance, svc, reqLogger, func() error {
 		externalHostname := r.externalHostnameForCR(instance)
-		if svc.Annotations[annotationExternalDnsHostname] != externalHostname {
-			svc.Annotations[annotationExternalDnsHostname] = externalHostname
-			svc.Spec = corev1.ServiceSpec{
-				Type: corev1.ServiceTypeLoadBalancer,
-				Ports: []corev1.ServicePort{
-					{
-						Name:       "https",
-						Port:       443,
-						TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: 443},
-						Protocol:   corev1.ProtocolTCP,
-					},
-				},
-				Selector: selectorLabelsForCR(instance),
-			}
-			return true
+		svc.Annotations[annotationExternalDnsHostname] = externalHostname
+		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
+		svc.Spec.Ports = []corev1.ServicePort{
+			{
+				Name:       "https",
+				Port:       443,
+				TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: 443},
+				Protocol:   corev1.ProtocolTCP,
+			},
 		}
-		return false
+		svc.Spec.Selector = selectorLabelsForCR(instance)
+		return nil
 	})
 }
 
 func (r *ReconcileImageRegistry) reconcilePersistentVolumeClaim(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
 	pvc := &corev1.PersistentVolumeClaim{}
-	return r.upsert(instance, pvcNameForCR(instance), pvc, reqLogger, func() bool {
-		pvc.Spec.StorageClassName = instance.Spec.PersistentVolumeClaim.StorageClassName
-		pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
-		if len(instance.Spec.PersistentVolumeClaim.AccessModes) == 0 {
-			pvc.Spec.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
-		} else {
-			pvc.Spec.AccessModes = instance.Spec.PersistentVolumeClaim.AccessModes
+	pvc.Name = pvcNameForCR(instance)
+	pvc.Namespace = instance.Namespace
+	storageClassName := instance.Spec.PersistentVolumeClaim.StorageClassName
+	accessModes := instance.Spec.PersistentVolumeClaim.AccessModes
+	if len(instance.Spec.PersistentVolumeClaim.AccessModes) == 0 {
+		accessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany}
+	}
+	/*ctx := context.TODO()
+	key := types.NamespacedName{Name: pvc.Name, Namespace: pvc.Namespace}
+	if err = r.client.Get(ctx, key, pvc); err != nil {
+		if errors.IsNotFound(err) {
+			pvc.Spec.StorageClassName = storageClassName
+			pvc.Spec.AccessModes = accessModes
+			pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
+			err = r.client.Create(ctx, pvc)
 		}
-		return false
+		return
+	}
+
+	if (storageClassName != nil && pvc.Spec.StorageClassName != storageClassName) || len(pvc.Spec.AccessModes) == 0 || pvc.Spec.AccessModes[0] != accessModes[0] {
+		return fmt.Errorf("%s", "pvc storageClassName or accessMode changed (all pvc fields except resource requests are immutable)")
+	}
+	patch := client.MergeFrom(pvc.DeepCopy())
+	pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
+	return r.client.Patch(ctx, pvc, patch)*/
+
+	return r.upsert(instance, pvc, reqLogger, func() error {
+		if storageClassName != nil {
+			pvc.Spec.StorageClassName = storageClassName
+		}
+		pvc.Spec.AccessModes = accessModes
+		pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
+		return nil
 	})
 }
 
 func (r *ReconcileImageRegistry) reconcileStatefulSet(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
 	statefulSet := &appsv1.StatefulSet{}
-	return r.upsert(instance, instance.Name, statefulSet, reqLogger, func() bool {
+	statefulSet.Name = instance.Name
+	statefulSet.Namespace = instance.Namespace
+	return r.upsert(instance, statefulSet, reqLogger, func() error {
 		externalName := r.externalHostnameForCR(instance)
 		generation := strconv.FormatInt(instance.Generation, 10)
 		a := statefulSet.Annotations
-		if a[annotationImageRegistryGeneration] != generation || a[annotationStatefulSetExternalName] != externalName {
-			r.updateStatefulSetForCR(instance, statefulSet)
-			a[annotationImageRegistryGeneration] = generation
-			a[annotationStatefulSetExternalName] = externalName
-			return true
-		}
+		r.updateStatefulSetForCR(instance, statefulSet)
 
 		// Set ImageRegistry ready condition
 		s := statefulSet.Status
@@ -82,6 +100,7 @@ func (r *ReconcileImageRegistry) reconcileStatefulSet(instance *registryv1alpha1
 		if !generationUpToDate {
 			updatedReplicas = 0
 		}
+		generationUpToDate = generationUpToDate && a[annotationImageRegistryGeneration] == generation
 		ready := generationUpToDate &&
 			statefulSet.Spec.Replicas != nil &&
 			*statefulSet.Spec.Replicas == replicas &&
@@ -103,7 +122,10 @@ func (r *ReconcileImageRegistry) reconcileStatefulSet(instance *registryv1alpha1
 			Reason:  condReason,
 		})
 
-		return false
+		a[annotationImageRegistryGeneration] = generation
+		a[annotationStatefulSetExternalName] = externalName
+
+		return nil
 	})
 }
 
@@ -160,8 +182,9 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 				Labels: labels,
 			},
 			Spec: corev1.PodSpec{
-				RestartPolicy: corev1.RestartPolicyAlways,
-				Volumes:       volumes,
+				ServiceAccountName: serviceAccountNameForCR(cr),
+				RestartPolicy:      corev1.RestartPolicyAlways,
+				Volumes:            volumes,
 				Containers: []corev1.Container{
 					{
 						Name:            "registry",
@@ -214,6 +237,9 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 							"--v=2",
 							"--alsologtostderr",
 							"/config/auth_config.yml",
+						},
+						Env: []corev1.EnvVar{
+							{Name: "NAMESPACE", Value: cr.GetNamespace()},
 						},
 						VolumeMounts: authVolumeMounts,
 						Ports: []corev1.ContainerPort{

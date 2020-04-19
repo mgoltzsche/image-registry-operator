@@ -13,8 +13,8 @@ func testImagePushSecret(t *testing.T, ctx *framework.Context, registryRef *oper
 	cr.Spec.RegistryRef = registryRef
 	cr.SetName("my-push-secret-cr")
 	testImageSecret(t, ctx, ImageSecretTestCase{
-		Type:            operator.TypePush,
 		CR:              cr,
+		AccessMode:      operator.TypePush,
 		SecretType:      corev1.SecretTypeOpaque,
 		DockerConfigKey: "config.json",
 		ExpectHostname:  hostname,

@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,42 +15,42 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 )
 
-const AuthType = "cr"
+const (
+	Origin = "cr"
+)
 
-type Authenticated struct {
-	Type      string                      `json:"type"`
-	Namespace string                      `json:"namespace"`
-	Name      string                      `json:"name"`
-	Intent    registryapi.ImageSecretType `json:"intent"`
+var originCR = []string{Origin}
+
+type cachedAccount struct {
+	HashedPassword
+	Labels   map[string][]string
+	LastSeen time.Time
 }
 
-type HashedPasswords []string
+func (a *cachedAccount) CacheExpired() bool {
+	return time.Now().After(a.LastSeen.Add(10 * time.Minute))
+}
 
-func (l HashedPasswords) MatchPassword(pw string) bool {
-	for _, h := range l {
-		if bcrypt.CompareHashAndPassword([]byte(h), []byte(pw)) == nil {
-			return true
-		}
+type HashedPassword string
+
+func (h HashedPassword) MatchPassword(pw string) bool {
+	if bcrypt.CompareHashAndPassword([]byte(h), []byte(pw)) == nil {
+		return true
 	}
 	return false
-}
-
-type authRecord struct {
-	HashedPasswords
-	RotationDate  time.Time
-	Authenticated Authenticated
 }
 
 type ErrorLogger func(error)
 
 type Authenticator struct {
-	client client.Client
-	cache  map[string]*authRecord
-	lock   sync.Locker
-	log    ErrorLogger
+	client    client.Client
+	cache     map[string]*cachedAccount
+	lock      sync.Locker
+	log       ErrorLogger
+	namespace string
 }
 
-func NewAuthenticator(cfg *rest.Config, log ErrorLogger) (a *Authenticator, err error) {
+func NewAuthenticator(cfg *rest.Config, namespace string, log ErrorLogger) (a *Authenticator, err error) {
 	scheme, err := registryapi.SchemeBuilder.Build()
 	if err != nil {
 		return
@@ -64,73 +63,60 @@ func NewAuthenticator(cfg *rest.Config, log ErrorLogger) (a *Authenticator, err 
 	if err != nil {
 		return
 	}
-	return &Authenticator{reader, map[string]*authRecord{}, &sync.Mutex{}, log}, nil
+	return &Authenticator{reader, map[string]*cachedAccount{}, &sync.Mutex{}, log, namespace}, nil
 }
 
-func (a *Authenticator) Authenticate(user, passwd string) *Authenticated {
-	account := a.findAccount(user)
-	if account != nil && account.MatchPassword(passwd) {
-		return &account.Authenticated
-	}
-	return nil
-}
-
-func (a *Authenticator) findAccount(username string) (account *authRecord) {
-	userParts := strings.SplitN(username, "/", 4)
-	if len(userParts) != 4 {
-		return // unsupported user name format
-	}
-	if account = a.cache[username]; account != nil {
-		return // cached
-	}
-	namespace := userParts[0]
-	name := userParts[1]
-	sType := registryapi.ImageSecretType(userParts[2])
-	var fetchedCR registryapi.ImageSecretInterface
-	switch sType {
-	case registryapi.TypePull:
-		fetchedCR = &registryapi.ImagePullSecret{}
-	case registryapi.TypePush:
-		fetchedCR = &registryapi.ImagePushSecret{}
-	default:
-		return // unsupported secret type
-	}
-	key := types.NamespacedName{Namespace: namespace, Name: name}
-	err := a.client.Get(context.TODO(), key, fetchedCR)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			a.log(err)
+func (a *Authenticator) Authenticate(user, passwd string) (labels map[string][]string, err error) {
+	if user != "" && passwd != "" {
+		var account *cachedAccount
+		account, err = a.findAccount(user)
+		if err == nil && account != nil && account.MatchPassword(passwd) {
+			labels = account.Labels
 		}
-	} else if a.notExpired(fetchedCR.GetStatus().RotationDate.Time) {
-		account = &authRecord{
-			HashedPasswords: HashedPasswords(fetchedCR.GetStatus().Passwords),
-			RotationDate:    fetchedCR.GetStatus().RotationDate.Time,
-			Authenticated: Authenticated{
-				Type:      AuthType,
-				Namespace: fetchedCR.GetNamespace(),
-				Name:      fetchedCR.GetName(),
-				Intent:    sType,
-			},
-		}
-		a.addToCache(username, account)
 	}
 	return
 }
 
-func (a *Authenticator) addToCache(username string, account *authRecord) {
+func (a *Authenticator) findAccount(username string) (account *cachedAccount, _ error) {
+	if account = a.cache[username]; account != nil && !account.CacheExpired() {
+		return // cached
+	}
+
+	key := types.NamespacedName{Name: username, Namespace: a.namespace}
+	acc := &registryapi.ImageRegistryAccount{}
+	err := a.client.Get(context.TODO(), key, acc)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	labels := map[string][]string{}
+	for k, v := range acc.Spec.Labels {
+		labels[k] = v
+	}
+	labels["origin"] = originCR
+	labels["account"] = []string{acc.Name}
+	account = &cachedAccount{
+		HashedPassword: HashedPassword(acc.Spec.Password),
+		Labels:         labels,
+		LastSeen:       time.Now(),
+	}
+	a.addToCache(username, account)
+	return
+}
+
+func (a *Authenticator) addToCache(username string, account *cachedAccount) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	cache := map[string]*authRecord{}
+	cache := map[string]*cachedAccount{}
 	// drop old entries
 	for usr, cached := range a.cache {
-		if a.notExpired(cached.RotationDate) {
+		if !cached.CacheExpired() {
 			cache[usr] = cached
 		}
 	}
 	cache[username] = account
 	a.cache = cache
-}
-
-func (a *Authenticator) notExpired(rotationDate time.Time) bool {
-	return time.Now().Before(rotationDate.Add(time.Minute * 30))
 }

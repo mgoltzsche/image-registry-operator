@@ -14,69 +14,78 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ImageSecretTestCase struct {
-	Type            operator.ImageSecretType
 	CR              operator.ImageSecretInterface
+	AccessMode      operator.ImageSecretType
 	SecretType      corev1.SecretType
 	DockerConfigKey string
 	ExpectHostname  string
 }
 
+func (c *ImageSecretTestCase) SecretName() string {
+	return fmt.Sprintf("%s-image-%s-secret", c.CR.GetName(), c.AccessMode)
+}
+
 func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase) {
 	f := framework.Global
+	registryNamespace := c.CR.GetRegistryRef().Namespace
 
 	// Test secret creation
 	secretCR := c.CR
 	secretCR.SetNamespace(f.Namespace)
-	namespace := secretCR.GetNamespace()
 	err := f.Client.Create(context.TODO(), secretCR, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
 	require.NoError(t, err, "create CR")
+	acc, usr, pw := waitForSecretUpdateAndAssert(t, c)
+	require.Equal(t, int64(1), c.CR.GetStatus().Rotation, "rotation after first account created")
+	expectedLabels := map[string][]string{
+		"origin":  []string{"cr"},
+		"account": []string{acc.Name},
+	}
+	for k, v := range acc.Spec.Labels {
+		expectedLabels[k] = v
+	}
 
-	//waitForSecretUpdateAndAssert(t, c, 1)
-
-	usr, pw := waitForSecretUpdateAndAssert(t, c, 1)
-	t.Run("authenticator", func(t *testing.T) {
-		testAuthenticator(t, ctx, namespace, secretCR.GetName(), c.Type, usr, pw)
+	t.Run("authn CLI", func(t *testing.T) {
+		testAuthentication(t, registryNamespace, usr, pw, expectedLabels, runAuthnCLI)
 	})
 	t.Run("authn plugin", func(t *testing.T) {
-		testAuthnPlugin(t, ctx, namespace, secretCR.GetName(), c.Type, usr, pw)
+		testAuthentication(t, registryNamespace, usr, pw, expectedLabels, runAuthnPlugin)
 	})
 
 	t.Run("credential rotation", func(t *testing.T) {
-		for i := 2; i < 4; i++ {
-			triggerCredentialRotation(t, secretCR)
-			waitForSecretUpdateAndAssert(t, c, uint64(i))
+		for i := 0; i < 2; i++ {
+			triggerCredentialRotation(t, c)
+			waitForSecretUpdateAndAssert(t, c)
 		}
+		t.Run("plugin authn after rotation", func(t *testing.T) {
+			testAuthentication(t, registryNamespace, usr, pw, expectedLabels, runAuthnPlugin)
+		})
 	})
 }
 
-func triggerCredentialRotation(t *testing.T, secretCR operator.ImageSecretInterface) {
-	t.Logf("triggering %T %s password rotation...", secretCR, secretCR.GetName())
-	secretCR.GetStatus().RotationDate = &metav1.Time{time.Now().Add(-24 * 30 * time.Hour)}
-	err := framework.Global.Client.Status().Update(context.TODO(), secretCR)
-	require.NoError(t, err, "trigger %T %s password rotation", secretCR, secretCR.GetName())
+func triggerCredentialRotation(t *testing.T, c ImageSecretTestCase) {
+	t.Log("triggering account rotation...")
+	client := framework.Global.Client
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{Name: c.SecretName(), Namespace: c.CR.GetNamespace()}
+	err := client.Get(context.TODO(), key, secret)
+	require.NoError(t, err, "get secret for %s to trigger account rotation", c.CR.GetName())
+	secret.Annotations = map[string]string{"someannotation": "someval"}
+	err = client.Update(context.TODO(), secret)
+	require.NoError(t, err, "update secret to trigger account rotation")
 }
 
-func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, rotationCount uint64) (usr, pw string) {
+func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account *operator.ImageRegistryAccount, usr, pw string) {
 	secretCR := c.CR
 	ns := secretCR.GetNamespace()
-	secretName := fmt.Sprintf("%s-image-%s-secret", secretCR.GetName(), c.Type)
-	secretKey := dynclient.ObjectKey{Name: secretName, Namespace: ns}
+	secretKey := dynclient.ObjectKey{Name: c.SecretName(), Namespace: ns}
 	status := secretCR.GetStatus()
-	err := WaitForCondition(t, secretCR, secretCR.GetName(), ns, 15*time.Second, func() (c []string) {
-		if status.Rotation != rotationCount {
-			c = append(c, fmt.Sprintf("$.status.rotation == %d (was %v)", rotationCount, status.Rotation))
-		}
-		if status.RotationDate == nil {
-			c = append(c, "$.status.rotationDate should be set")
-		}
-		if len(status.Passwords) == 0 {
-			c = append(c, "len($.status.passwords) > 0")
-		}
+	rotation := status.Rotation
+	err := WaitForCondition(t, secretCR, secretCR.GetName(), ns, 10*time.Second, func() (c []string) {
 		if !status.Conditions.IsTrueFor("Ready") {
 			cond := status.Conditions.GetCondition("Ready")
 			if cond == nil {
@@ -85,27 +94,54 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, rotationC
 				c = append(c, fmt.Sprintf("Ready{%s: %s}", cond.Reason, cond.Message))
 			}
 		}
+		if status.Rotation <= rotation {
+			c = append(c, "rotationIncrement")
+		}
 		return
 	})
-	require.NoError(t, err, "wait for %T to update (rotation %d)", secretCR, rotationCount)
-	require.True(t, len(status.Passwords) <= 2, "CR should have len(status.passwords) <= 2")
+	require.NoError(t, err, "wait for %T to update (rotation %d)", secretCR, rotation+1)
+	require.True(t, rotation < status.Rotation && status.Rotation < rotation+4, "rotation: %d < r < %d, r = %d", rotation, rotation+4, status.Rotation)
+	require.NotNil(t, status.RotationDate, "rotation date")
+
+	// Verify generated account
+	account = &operator.ImageRegistryAccount{}
+	accName := fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation)
+	accKey := types.NamespacedName{Name: accName, Namespace: c.CR.GetNamespace()}
+	err = framework.Global.Client.Get(context.TODO(), accKey, account)
+	require.NoError(t, err, "account should exist")
+	require.True(t, account.Spec.Password != "", "account password set")
+	require.True(t, account.Spec.TTL != nil, "account TTL set")
+	require.Equal(t, 24*time.Hour, account.Spec.TTL.Duration, "account ttl")
+	expectedLabels := map[string][]string{
+		"name":       []string{secretCR.GetName()},
+		"namespace":  []string{secretCR.GetNamespace()},
+		"accessMode": []string{string(secretCR.GetRegistryAccessMode())},
+	}
+	require.Equal(t, expectedLabels, account.Spec.Labels, "account labels")
+
+	// Verify generated Secret
 	secret := &corev1.Secret{}
 	err = framework.Global.Client.Get(context.TODO(), secretKey, secret)
 	require.NoError(t, err, "secret should exist")
 	require.Equal(t, c.SecretType, secret.Type, "resulting secret's type")
-	require.NotNil(t, secret.Data["ca.crt"], "resulting secret should have ca.crt entry")
+	require.True(t, len(secret.Data["ca.crt"]) > 0, "resulting secret should have ca.crt entry")
 	require.Equal(t, c.ExpectHostname, string(secret.Data["hostname"]), "resulting secret's hostname entry")
 	usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, c.ExpectHostname)
-	for _, hashedPw := range status.Passwords {
-		err = bcrypt.CompareHashAndPassword([]byte(hashedPw), []byte(pw))
-		if err == nil {
-			break
-		}
-	}
-	require.NoError(t, err, "none of the %d bcrypted %T passwords matches the one within the Secret (rotation %d) - CR/Secret sync issue?", len(status.Passwords), secretCR, rotationCount)
-	expectedUser := fmt.Sprintf("%s/%s/%s/%d", ns, secretCR.GetName(), c.Type, rotationCount)
-	require.Equal(t, expectedUser, usr, "username")
-	t.Logf("secret %s's password matches one within %T %s", secret.Name, secretCR, secretCR.GetName())
+	err = bcrypt.CompareHashAndPassword([]byte(account.Spec.Password), []byte(pw))
+	require.NoError(t, err, "bcrypted password should match - CR/Secret sync issue?")
+	require.Equal(t, accName, usr, "username")
+	t.Logf("secret %s's password matches the one in account %s", secret.Name, accName)
+
+	// Ensure that rotation does not happen when nothing changes
+	rotation = status.Rotation
+	secret.Annotations["someannotation"] = "someval"
+	err = framework.Global.Client.Update(context.TODO(), secret)
+	require.NoError(t, err, "secret update without changes")
+	time.Sleep(2 * time.Second)
+	key := types.NamespacedName{Name: secretCR.GetName(), Namespace: secretCR.GetNamespace()}
+	err = framework.Global.Client.Get(context.TODO(), key, secretCR)
+	require.NoError(t, err, "secret CR should exist")
+	require.Equal(t, rotation, status.Rotation, "status.rotation: secret should not be rotated if nothing changed")
 	return
 }
 

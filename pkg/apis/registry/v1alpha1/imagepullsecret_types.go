@@ -16,6 +16,10 @@ type ImagePullSecret struct {
 	ImageSecret `json:",inline"`
 }
 
+func (_ *ImagePullSecret) GetRegistryAccessMode() ImageSecretType {
+	return TypePull
+}
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ImagePullSecretList contains a list of ImagePullSecret
