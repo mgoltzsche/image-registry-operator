@@ -25,16 +25,17 @@ import (
 )
 
 const (
-	RequeueDelaySeconds      = 30 * time.Second
-	RequeueDelayErrorSeconds = 5 * time.Second
-	ConditionReady           = "Ready"
-	ReasonRegistryNotFound   = "RegistryNotFound"
-	ReasonFailedSync         = status.ConditionReason("FailedSync")
-	EnvDefaultRegistryName   = "OPERATOR_DEFAULT_REGISTRY_NAME"
-	EnvSecretTTL             = "OPERATOR_SECRET_TTL"
-	AnnotationSecretRotation = "registry.mgoltzsche.github.com/rotation"
-	secretCaCertKey          = "ca.crt"
-	defaultAccountTTL        = 24 * time.Hour
+	RequeueDelaySeconds         = 30 * time.Second
+	RequeueDelayErrorSeconds    = 5 * time.Second
+	ConditionReady              = "Ready"
+	ReasonRegistryNotFound      = "RegistryNotFound"
+	ReasonFailedSync            = status.ConditionReason("FailedSync")
+	EnvDefaultRegistryName      = "OPERATOR_DEFAULT_REGISTRY_NAME"
+	EnvDefaultRegistryNamespace = "OPERATOR_DEFAULT_REGISTRY_NAMESPACE"
+	EnvSecretTTL                = "OPERATOR_SECRET_TTL"
+	AnnotationSecretRotation    = "registry.mgoltzsche.github.com/rotation"
+	secretCaCertKey             = "ca.crt"
+	defaultAccountTTL           = 24 * time.Hour
 )
 
 type ReconcileImageSecretConfig struct {
@@ -46,16 +47,22 @@ type ReconcileImageSecretConfig struct {
 
 // NewReconciler returns a new reconcile.Reconciler
 func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSecretConfig) reconcile.Reconciler {
-	defaultRegistryName := os.Getenv(EnvDefaultRegistryName)
-	if defaultRegistryName == "" {
-		defaultRegistryName = "registry"
+	defaultRegistryRef := registryapi.ImageRegistryRef{
+		Name:      os.Getenv(EnvDefaultRegistryName),
+		Namespace: os.Getenv(EnvDefaultRegistryNamespace),
 	}
-	ns, err := k8sutil.GetOperatorNamespace()
-	if err != nil {
-		ns = os.Getenv("WATCH_NAMESPACE")
-		if ns == "" || ns == "*" {
-			panic("could not detect operator namespace")
+	if defaultRegistryRef.Name == "" {
+		defaultRegistryRef.Name = "registry"
+	}
+	if defaultRegistryRef.Namespace == "" {
+		ns, err := k8sutil.GetOperatorNamespace()
+		if err != nil {
+			ns = os.Getenv("WATCH_NAMESPACE")
+			if ns == "" || ns == "*" {
+				panic(fmt.Sprintf("could not detect operator namespace to derive %s - set it alternatively", EnvDefaultRegistryNamespace))
+			}
 		}
+		defaultRegistryRef.Namespace = ns
 	}
 	accountTTL := defaultAccountTTL
 	accountTTLStr := os.Getenv(EnvSecretTTL)
@@ -75,7 +82,7 @@ func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSe
 		cache:            mgr.GetCache(),
 		logger:           logger,
 		cfg:              cfg,
-		defaultRegistry:  registryapi.ImageRegistryRef{Name: defaultRegistryName, Namespace: ns},
+		defaultRegistry:  defaultRegistryRef,
 		accountTTL:       accountTTL,
 		rotationInterval: accountTTL / 2,
 	}

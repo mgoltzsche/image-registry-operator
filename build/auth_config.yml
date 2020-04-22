@@ -12,14 +12,14 @@ token:
 
 acl:
   - match:
-      type: cr
-      intent: push
+      origin: cr
+      accessMode: push
     actions:
     - pull
     - push
     comment: ImagePushSecret users can push/pull
   - match:
-      type: cr
+      origin: cr
     actions:
     - pull
     comment: ImagePullSecret users can pull

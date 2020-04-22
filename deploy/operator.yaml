@@ -31,10 +31,16 @@ spec:
             - name: OPERATOR_NAME
               value: "image-registry-operator"
             - name: OPERATOR_DNS_ZONE
-              value: svc.example.org
+              value: "svc.example.org"
             - name: OPERATOR_DEFAULT_CLUSTER_ISSUER
-              value: registry-ca-issuer
-            - name: OPERATOR_SECRET_ROTATION_INTERVAL
+              value: "registry-ca-issuer"
+            - name: OPERATOR_SECRET_TTL
               value: "24h"
+            - name: OPERATOR_DEFAULT_REGISTRY_NAME
+              value: "registry"
+            - name: OPERATOR_DEFAULT_REGISTRY_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
       imagePullSecrets:
       - name: registry-deployment-pull-credentials
