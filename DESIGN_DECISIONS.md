@@ -1,6 +1,6 @@
 # Design decisions
 
-## ImagePullSecret
+## ImagePullSecret/ImagePullSecret
 
 ### Why not use existing ServiceAccount tokens as pull secrets?
 A ServiceAccount token provides access to the K8s API and does not change (yet?).
@@ -15,25 +15,21 @@ These privileges should not be exposed to/mixed up with the registry:
 Because the registry is a critical infrastructure component and
 users might copy pull/push secrets from the cluster to their (mobile) device which could get into wrong hands.
 
-### Why use a CR instead of a ServiceAccount annotation?
+### Why use a CRD instead of a ServiceAccount annotation?
 Push secrets should not be used as pull secrets and therefore also not be attached
 to a ServiceAccount (to avoid giving a potentially compromised node image write access).
-Thus there must be way to specify a secret without annotating an object.  
+Thus there must be way to specify a secret without annotating a ServiceAccount: CRD.
 
-(Additionally a service account annotation could be supported as well but is not.)
-
-#### Why have a CR for a secret but not for a ServiceAccount?
-It simplifies usage:
+#### Why have a CRD for a secret but not for a ServiceAccount?
+To simplify optional usage:
 In sub projects the ServiceAccount should be independent from the CRD/CR that could be deployed separately or not deployed at all.
 A ServiceAccount can be set up with an imagePullSecret pointing to a secret not (yet) existing secret and used immediately -  
 TODO: Verify that it also works when the pull secret is created after the first container start attempt referring to it.
 
-### Why store the bcrypted passwords in CR status?
-RBAC:
-* The authservice should be configurable to read multiple namespaces' CRs but not all secrets.
+### Why have separate ImageRegistryAccount?
 * Authentication via secret check only would allow any account that can create/delete secrets to create/delete a registry account.
-* Navigating from CR to Secret resource per authentication would be unnecessary overhead.
-* Stop users from accessing the registry using self-managed, potentially insecure secrets (without CR).
+* The auth service should be granted access to resources within its own namespace, not resources of others.
+* To allow static (not rotated) account creation (e.g. for external services) - not recommended though.
 
 ### Why use basic auth instead of a JWT?
 * Registry access can be denied immediately by removing the CR (JWT would still be valid until it expires - however docker's JWT may still be valid anyway).
@@ -41,7 +37,7 @@ RBAC:
 * Currently cesanta/docker_auth doesn't support Bearer Token (JWT) authentication for external or plugin authentication but basic auth only.
   (Docker proceeds with docker_auth's short-lived JWT afterwards anyway)
 
-### Why use separate ImagePullSecret/ImagePushSecret CRDs instead of a single RegistryAccount CRD with a push flag/subtype?
+### Why use separate ImagePullSecret/ImagePushSecret CRDs instead of a single CRD with a push flag/subtype?
 * Ensure pull secret format differs from push secret format as well as the pull password differs from the push password. (pull secrets are more widely distributed (to nodes) than push secrets and the latter have a higher security impact)
 * Declare either a pull or a push secret when needed - not always both (imagine one pull secret and multiple push secrets per namespace or push secrets only)
 * Allow users to delegate pull and push account management separately (RBAC)

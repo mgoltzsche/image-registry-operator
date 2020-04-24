@@ -1,22 +1,70 @@
 image-registry-operator
 ===
 
-A Kubernetes operator that maintains in-cluster docker registries as well as
-corresponding pull and push secrets.
-For granular authorization [docker_auth](https://github.com/cesanta/docker_auth) is integrated.
+A Kubernetes operator that maintains in-cluster docker registries, accounts
+as well as separate push and pull secrets.
+Granular authorization is supported by [cesanta/docker_auth](https://github.com/cesanta/docker_auth).  
+
+
+# Custom Resource Definitions
+
+This operator supports the following CRDs:
+* `ImageRegistry` represents a [docker image registry](https://docs.docker.com/registry/) and [docker_auth](https://github.com/cesanta/docker_auth) service.
+* `ImageRegistryAccount` represents an account to access the registry. A registry only authenticates accounts contained in its namespace.
+* `ImagePushSecret` represents an `ImageRegistryAccount` in the referenced registry's namespace and an `Opaque` `Secret` with a docker config at key `config.json`.
+* `ImagePullSecret` represents an `ImageRegistryAccount` in the referenced registry's namespace and a `kubernetes.io/dockerconfigjson` `Secret`.
+
+By default managed push and pull secrets are rotated every 24h.  
+Both push and pull secrets contain additional keys:
+* `hostname` - the registry's hostname _(to be used to define registry agnostic builds)_
+* `ca.crt` - the registry's CA certificate _(to support test installations using a self-signed CA)_
+
+A `Ready` condition is maintained by the operator for `ImageRegistry`, `ImagePushSecret` and `ImagePullSecret` resources
+reflecting its current status and the cause in case of an error.
+
 
 # Kubernetes cluster requirements
 
 * LoadBalancer support
 * CoreDNS' static IP (`10.96.0.10`) must be configured as first nameserver on every node (avoid DNS loops!) (to resolve registry on nodes).
 * CoreDNS should be configured with the `k8s_external` plugin exposing LoadBalancer Services under your public DNS zone (`OPERATOR_DNS_ZONE`).
+* [cert-manager](https://cert-manager.io/) should be installed.
+
+
+# DNS
+
+An `ImageRegistry`'s hostname looks as follows: `<NAME>.<NAMESPACE>.<OPERATOR_DNS_ZONE>`.  
+
+Name resolution inside your k8s cluster and on its nodes can be done using the `k8s_external` CoreDNS plugin.
+For DNS resolution outside your cluster (if needed) [external-dns](https://github.com/kubernetes-sigs/external-dns)
+could be configured.
+
+
+# TLS
+
+Per default no TLS certificates are managed for an `ImageRegistry` so that
+it doesn't start as long as you don't provide a corresponding secret.
+However it is recommended to have [cert-manager](https://cert-manager.io/) installed
+in your cluster and refer to an `Issuer` within your `ImageRegistry` resource
+to make it maintain the required `Certificate`s.  
+
+_Please note that, in case of a self-signed registry TLS CA, the CA certificate must be registered with the container runtime._
+_When this should be done dynamically CRI-O should be used since, at the time of writing, other container runtimes
+don't support reloading CAs without a restart._
+
+
+# Authorization
+
+Authorization can be specified per `ImageRegistry` using [docker_auth's ACL](https://github.com/cesanta/docker_auth/blob/master/docs/Labels.md).
+
 
 # Installation
 
-Install the operator (you need to specify `OPERATOR_DNS_ZONE` env var with your public DNS zone):
+Install the operator (you may want to specify `OPERATOR_DNS_ZONE` env var with your public DNS zone, the default is `svc.example.org`):
 ```
 kubectl apply -k ./deploy
 ```
+
 
 # Usage example
 
@@ -25,12 +73,12 @@ Create a (the default) `ImageRegistry` (maintains a StatefulSet and LoadBalancer
 kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imageregistry_cr.yaml
 ```
 
-Create an `ImagePushSecret` (maintains Secret `<CR_NAME>-image-push-secret`):
+Create an `ImagePushSecret` (maintains an `ImageRegistryAccount` and a Secret `<CR_NAME>-image-push-secret`):
 ```
 kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imagepushsecret_cr.yaml
 ```
 
-Create an `ImagePullSecret` (maintains Secret `<CR_NAME>-image-pull-secret`):
+Create an `ImagePullSecret` (maintains an `ImageRegistryAccount` and a Secret `<CR_NAME>-image-pull-secret`):
 ```
 kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imagepullsecret_cr.yaml
 ```
@@ -40,32 +88,11 @@ Configure your local host to use the previously created `ImagePushSecret`'s Dock
 kubectl get -n build secret example-imagepushsecret-image-push-secret -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
 ```
 
-# How it works
-For each `ImagePullSecret` CR a dockerconfig secret is maintained.
-The corresponding registry URL is configured as operator deployment environment variable.
-The username is derived from the CR following the scheme `<namespace>/<name>/<status.rotation>`.
-The password is rotated using the secret's `nextpassword` field to allow asynchronous credential
-sync by publishing its bcrypt hash with the CR's `passwords` status field one rotation before its
-plain text version is rotated into the `.dockerconfigjson` key within the generated `Secret`
-to be actually used by clients.
-Correspondingly the active two bcrypt password hashes are maintained within the CR's status field `passwords`.
-Other applications may use them to authenticate users.  
-
-For authentication against the CRs an image with [cesanta/docker_auth](https://github.com/cesanta/docker_auth)
-and the `docker-authn-plugin` within this repository is built.
-In order to use the plugin containers should be configured correspondingly (`auth_config.yml`):
-```
-plugin_authn:
-  plugin_path: /docker_auth/k8s-docker-authn.so
-```
-
-Authorization can be specified using [docker_auth's ACL](https://github.com/cesanta/docker_auth/blob/master/docs/Labels.md).
-
 
 # How to build
-Build the operator and [docker_auth](https://github.com/cesanta/docker_auth) images (requires make and docker/podman):
+Build the operator as well as preconfigured [docker_auth](https://github.com/cesanta/docker_auth) and [nginx](https://www.nginx.com/) images (requires make and docker/podman):
 ```
-make operator docker_auth
+make operator docker_auth nginx
 ```
 
 

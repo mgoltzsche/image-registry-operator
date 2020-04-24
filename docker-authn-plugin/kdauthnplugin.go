@@ -12,13 +12,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const (
-	pluginName     = "k8s-authn"
-	labelType      = "type"
-	labelName      = "name"
-	labelNamespace = "namespace"
-	labelIntent    = "intent"
-)
+const pluginName = "k8s-authn"
 
 var (
 	// Export cesanta/docker_auth plugin

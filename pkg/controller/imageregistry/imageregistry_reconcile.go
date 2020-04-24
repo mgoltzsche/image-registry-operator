@@ -78,9 +78,9 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		r.reconcileServiceAccount,
 		r.reconcileRole,
 		r.reconcileRoleBinding,
-		r.reconcilePersistentVolumeClaim,
 		r.reconcileService,
 		r.reconcileStatefulSet,
+		r.reconcilePersistentVolumeClaim,
 	}
 	return r
 }
