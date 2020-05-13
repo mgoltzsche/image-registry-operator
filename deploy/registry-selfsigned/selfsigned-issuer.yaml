@@ -1,0 +1,7 @@
+apiVersion: cert-manager.io/v1alpha3
+kind: Issuer
+metadata:
+  name: registry-selfsigned-issuer
+  namespace: build
+spec:
+  selfSigned: {}

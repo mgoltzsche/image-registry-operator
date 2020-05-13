@@ -6,11 +6,9 @@ metadata:
 spec:
   replicas: 1
   auth:
-    #configMapName: my-auth-configmap
     issuerRef:
-      name: registry-ca-issuer
-      kind: ClusterIssuer
-  tls: {} # separate issuerRef could be specified here, otherwise auth's is used
+      name: registry-selfsigned-issuer
+      kind: Issuer
   persistentVolumeClaim:
     #storageClassName: mysc
     accessModes:

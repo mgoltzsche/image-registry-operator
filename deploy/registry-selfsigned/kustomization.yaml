@@ -1,0 +1,12 @@
+namespace: build
+
+bases:
+- github.com/mgoltzsche/nodehack/deploy
+
+resources:
+- selfsigned-issuer.yaml
+- registry.yaml
+- coredns-configmap.yaml
+
+patchesStrategicMerge:
+- registry-nodehack-daemonset-patch.yaml

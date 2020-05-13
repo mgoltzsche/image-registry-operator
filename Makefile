@@ -13,7 +13,7 @@ endef
 export TESTDOCKERFILE
 
 
-all: operator docker_auth nginx nodehack
+all: operator docker_auth nginx
 
 operator:
 	docker build --force-rm -t image-registry-operator -f build/Dockerfile --target operator .
@@ -23,9 +23,6 @@ docker_auth:
 
 nginx:
 	docker build --force-rm -t registry-nginx -f build/Dockerfile-nginx .
-
-nodehack:
-	docker build --force-rm -t registry-nodehack -f build/Dockerfile-nodehack .
 
 unit-tests:
 	docker build --force-rm -f build/Dockerfile .

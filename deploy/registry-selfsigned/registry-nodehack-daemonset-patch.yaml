@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nodehack-daemonset
+spec:
+  template:
+    spec:
+      containers:
+      - name: nodehack
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: CERT_NAME
+          value: registry-ca
+        - name: CERT_FILE
+          value: /ca-cert/ca.crt
+      volumes:
+      - name: ca-cert
+        secret:
+          secretName: registry-ca

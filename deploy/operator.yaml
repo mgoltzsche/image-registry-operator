@@ -42,5 +42,3 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-      imagePullSecrets:
-      - name: registry-deployment-pull-credentials
