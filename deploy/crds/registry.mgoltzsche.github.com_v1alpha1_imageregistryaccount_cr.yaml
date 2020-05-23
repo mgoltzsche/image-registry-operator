@@ -3,5 +3,5 @@ kind: ImageRegistryAccount
 metadata:
   name: example-imageregistryaccount
 spec:
-  passwords: $12$asdgasdg
+  passwords: $12$asdfasdf
     

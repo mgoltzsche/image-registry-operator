@@ -28,7 +28,7 @@ reflecting its current status and the cause in case of an error.
 
 * LoadBalancer support
 * CoreDNS' static IP (`10.96.0.10`) must be configured as first nameserver on every node (avoid DNS loops!) to resolve registry on nodes.
-* CoreDNS should be configured with the `k8s_external` plugin exposing LoadBalancer Services under your public DNS zone (`OPERATOR_DNS_ZONE`).
+* optional (for public access): CoreDNS should be configured with the `k8s_external` plugin exposing LoadBalancer Services under your public DNS zone (`OPERATOR_DNS_ZONE`).
 * optional: [cert-manager](https://cert-manager.io/) should be installed.
 
 
@@ -43,11 +43,9 @@ could be configured.
 
 # TLS
 
-Per default no TLS certificates are managed for an `ImageRegistry` so that
-it doesn't start as long as you don't provide a corresponding secret.
-However it is recommended to have [cert-manager](https://cert-manager.io/) installed
-in your cluster and refer to an `Issuer` within your `ImageRegistry` resource
-to make it maintain the required `Certificate`s.  
+By default, if neither an issuer nor a secret name are specified, the operator maintains self-signed certificates for an `ImageRegistry`'s TLS and token CA.
+However an `ImageRegistry` can optionally refer to an existing secret or a [cert-manager](https://cert-manager.io/)
+`Issuer` which the operator will then use to create a `Certificate`.
 
 _Please note that, in case of a self-signed registry TLS CA, the CA certificate must be registered with the container runtime._
 _For development purposes [nodehack](https://github.com/mgoltzsche/nodehack) can help with that._

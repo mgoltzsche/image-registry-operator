@@ -229,9 +229,6 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 		"name":       []string{instance.GetName()},
 		"accessMode": []string{string(instance.GetRegistryAccessMode())},
 	}
-	if err = controllerutil.SetControllerReference(instance, account, r.scheme); err != nil {
-		return
-	}
 	reqLogger.Info("Creating ImageRegistryAccount", "ImageRegistryAccount.Namespace", account.Namespace, "ImageRegistryAccount.Name", account.Name)
 	err = r.client.Create(context.TODO(), account)
 	if err != nil {

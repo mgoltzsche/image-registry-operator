@@ -51,14 +51,21 @@ generate:
 run-e2e-tests: operatorsdk-tests-local kubectl-tests
 
 operatorsdk-tests-local:
+	kubectl create namespace $(TEST_NAMESPACE)-local
+	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE)-local --up-local; \
+	STATUS=$$?; \
+	kubectl delete namespace $(TEST_NAMESPACE)-local; \
+	exit $$STATUS
+
+operatorsdk-tests:
 	kubectl create namespace $(TEST_NAMESPACE)
-	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --up-local; \
+	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE); \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE); \
 	exit $$STATUS
 
 kubectl-tests:
-	./test/test.sh
+	./test/cluster-scoped-test.sh
 
 install-tools: download-deps
 	cat tools.go | grep -E '^\s*_' | cut -d'"' -f2 | xargs -n1 go install

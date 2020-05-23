@@ -22,6 +22,8 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 	f := framework.Global
 	namespace := f.Namespace
 
+	// TODO: also test registry using cert-manager
+
 	// Insert ImageRegistry CR
 	//authSecretName := "test-auth-ca"
 	//tlsSecretName := "test-tls"

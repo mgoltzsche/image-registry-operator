@@ -186,7 +186,7 @@ func (r *ReconcileImageRegistry) externalHostnameForCR(cr *registryv1alpha1.Imag
 }
 
 func selectorLabelsForCR(cr *registryv1alpha1.ImageRegistry) map[string]string {
-	return map[string]string{"app": cr.Name}
+	return map[string]string{"app": "imageregistry-" + cr.Name}
 }
 
 func serviceNameForCR(cr *registryv1alpha1.ImageRegistry) string {

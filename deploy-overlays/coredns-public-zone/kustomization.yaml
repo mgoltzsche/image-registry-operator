@@ -1,0 +1,6 @@
+bases:
+- ../cluster-scoped
+
+resources:
+# TODO: Template configmap with external zone
+- coredns-configmap.yaml
