@@ -31,11 +31,17 @@ type KeyPair struct {
 
 func X509KeyPair(keyPEM, certPEM, caCertPEM []byte) (*KeyPair, error) {
 	pb, _ := pem.Decode(keyPEM)
+	if pb.Type != pemTypeRSAPrivateKey {
+		return nil, errors.New("unexpected PEM type " + pb.Type + " - expected " + pemTypeRSAPrivateKey)
+	}
 	rsaKey, err := x509.ParsePKCS1PrivateKey(pb.Bytes)
 	if err != nil {
 		return nil, err
 	}
 	pb, _ = pem.Decode(certPEM)
+	if pb.Type != pemTypeCertificate {
+		return nil, errors.New("unexpected PEM type " + pb.Type + " - expected " + pemTypeCertificate)
+	}
 	cert, err := x509.ParseCertificate(pb.Bytes)
 	if err != nil {
 		return nil, err

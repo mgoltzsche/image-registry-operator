@@ -64,7 +64,7 @@ func TestCertGen(t *testing.T) {
 	_, err = http.Get("http://localhost" + regexp.MustCompile(":[0-9]+$").FindString(server.URL))
 	require.NoError(t, err, "HTTP GET request on test server using TLS cert")
 
-	time.Sleep(startTime.Add(ttl).Sub(time.Now()) + 500*time.Millisecond)
+	time.Sleep(startTime.Add(ttl).Sub(time.Now()) + 3*time.Second)
 	require.True(t, ca.NeedsRenewal(), "CA needs renewal")
 	require.True(t, cert.NeedsRenewal(), "CA needs renewal")
 }

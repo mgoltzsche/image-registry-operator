@@ -21,17 +21,20 @@ RUN go build -o /k8s-docker-authn.so -buildmode=plugin -ldflags '-s -w'
 
 # Build clean auth_server image
 FROM alpine:3.11 AS auth_server
-RUN apk add --update --no-cache ca-certificates
+RUN apk add --update --no-cache ca-certificates gettext
 RUN addgroup -g 5001 auth_server
 RUN adduser -u 5001 -G auth_server -S -h /auth_server_data auth_server
 USER auth_server:auth_server
 ENV HOME=/auth_server_data
 COPY --from=auth_server_build /auth_server /k8s-docker-authn.so /docker_auth/
-COPY build/auth_config.yml /config/auth_config.yml
-ENTRYPOINT ["/docker_auth/auth_server"]
-CMD ["--v=2", "--alsologtostderr", "/config/auth_config.yml"]
+COPY build/auth_config.yml.tpl /config/
+COPY build/bin/auth_entrypoint /auth_entrypoint
+ENTRYPOINT ["/auth_entrypoint"]
 EXPOSE 5001
 
 # Test plugin binary compatibility
 # Should fail with exit code 2 reported by plugin due to missing KUBECONFIG
-RUN timeout 3 /docker_auth/auth_server /config/auth_config.yml || [ $? -eq 2 ]
+FROM auth_server
+RUN timeout 3 /auth_entrypoint || [ $? -eq 2 ]
+
+FROM auth_server

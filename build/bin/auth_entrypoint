@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -e
+
+LOG_LEVEL="${LOG_LEVEL:-2}"
+
+export AUTH_SERVER_ADDR="${AUTH_SERVER_ADDR:-:5001}"
+export AUTH_TOKEN_ISSUER="${AUTH_TOKEN_ISSUER:-Docker Registry Auth Service}"
+export AUTH_TOKEN_EXPIRATION="${AUTH_TOKEN_EXPIRATION:-900}"
+export AUTH_TOKEN_CRT="${AUTH_TOKEN_CRT:-/config/auth-cert/tls.crt}"
+export AUTH_TOKEN_KEY="${AUTH_TOKEN_KEY:-/config/auth-cert/tls.key}"
+
+envsubst '$AUTH_SERVER_ADDR,$AUTH_TOKEN_ISSUER,$AUTH_TOKEN_EXPIRATION,$AUTH_TOKEN_CRT,$AUTH_TOKEN_KEY,$NAMESPACE' < /config/auth_config.yml.tpl > /tmp/auth_config.yml
+
+exec /docker_auth/auth_server --v="$LOG_LEVEL" --alsologtostderr /tmp/auth_config.yml

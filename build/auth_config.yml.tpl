@@ -1,14 +1,14 @@
 server:
-  addr: ":5001"
+  addr: "${AUTH_SERVER_ADDR}"
 
 plugin_authn:
   plugin_path: /docker_auth/k8s-docker-authn.so
 
 token:
-  issuer: "Docker Registry Auth Service"  # Must match issuer in the Registry config.
-  expiration: 900
-  certificate: "/config/auth-cert/tls.crt"
-  key: "/config/auth-cert/tls.key"
+  issuer: "${AUTH_TOKEN_ISSUER}"  # Must match issuer in the Registry config.
+  expiration: ${AUTH_TOKEN_EXPIRATION}
+  certificate: "${AUTH_TOKEN_CRT}"
+  key: "${AUTH_TOKEN_KEY}"
 
 acl:
   - match:

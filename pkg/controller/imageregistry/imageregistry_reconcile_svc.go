@@ -18,6 +18,10 @@ const (
 	annotationExternalDnsHostname     = "external-dns.alpha.kubernetes.io/hostname"
 	annotationImageRegistryGeneration = "registry.mgoltzsche.github.com/generation"
 	annotationStatefulSetExternalName = "registry.mgoltzsche.github.com/externalName"
+	internalPortRegistry              = int32(5000)
+	internalPortAuth                  = int32(5001)
+	internalPortNginx                 = int32(8443)
+	publicPortNginx                   = int32(443)
 )
 
 func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
@@ -31,8 +35,8 @@ func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.Ima
 		svc.Spec.Ports = []corev1.ServicePort{
 			{
 				Name:       "https",
-				Port:       443,
-				TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: 443},
+				Port:       publicPortNginx,
+				TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: internalPortNginx},
 				Protocol:   corev1.ProtocolTCP,
 			},
 		}
@@ -130,6 +134,8 @@ func (r *ReconcileImageRegistry) reconcileStatefulSet(instance *registryv1alpha1
 }
 
 func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.ImageRegistry, statefulSet *appsv1.StatefulSet) {
+	extHostname := r.externalHostnameForCR(cr)
+	authIssuerName := fmt.Sprintf("Docker Registry Auth %s", extHostname)
 	labels := selectorLabelsForCR(cr)
 	replicas := int32(1)
 	if cr.Spec.Replicas != nil {
@@ -191,33 +197,25 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 						Image:           r.imageRegistry,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Ports: []corev1.ContainerPort{
-							{Name: "docker", ContainerPort: 5000, Protocol: corev1.ProtocolTCP},
+							{Name: "docker", ContainerPort: internalPortRegistry, Protocol: corev1.ProtocolTCP},
 						},
 						Env: []corev1.EnvVar{
-							{Name: "REGISTRY_HTTP_ADDR", Value: ":5000"},
+							{Name: "REGISTRY_HTTP_ADDR", Value: fmt.Sprintf(":%d", internalPortRegistry)},
 							{Name: "REGISTRY_HTTP_RELATIVEURLS", Value: "true"},
 							{Name: "REGISTRY_STORAGE_DELETE_ENABLED", Value: "true"},
 							{Name: "REGISTRY_AUTH", Value: "token"},
 							{Name: "REGISTRY_AUTH_TOKEN_REALM", Value: r.externalUrlForCR(cr) + "/auth/token"},
 							{Name: "REGISTRY_AUTH_TOKEN_AUTOREDIRECT", Value: "true"},
-							{Name: "REGISTRY_AUTH_TOKEN_ISSUER", Value: "Docker Registry Auth Service"},
-							{Name: "REGISTRY_AUTH_TOKEN_SERVICE", Value: "Docker Registry"},
+							{Name: "REGISTRY_AUTH_TOKEN_ISSUER", Value: authIssuerName},
+							{Name: "REGISTRY_AUTH_TOKEN_SERVICE", Value: fmt.Sprintf("Docker Registry %s", extHostname)},
 							{Name: "REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE", Value: "/root/auth-cert/ca.crt"},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "images", MountPath: "/var/lib/registry"},
 							{Name: "registry-auth-token-ca", MountPath: "/root/auth-cert"},
 						},
-						LivenessProbe: &corev1.Probe{
-							Handler: corev1.Handler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/",
-									Port: intstr.IntOrString{Type: intstr.Int, IntVal: 5000},
-								},
-							},
-							InitialDelaySeconds: 3,
-							PeriodSeconds:       3,
-						},
+						ReadinessProbe: httpProbe(internalPortRegistry, "/"),
+						LivenessProbe:  httpProbe(internalPortRegistry, "/"),
 						Resources: corev1.ResourceRequirements{
 							Limits: map[corev1.ResourceName]resource.Quantity{
 								corev1.ResourceCPU:    resource.MustParse("100m"),
@@ -233,28 +231,17 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 						Name:            "auth",
 						Image:           r.imageAuth,
 						ImagePullPolicy: corev1.PullIfNotPresent,
-						Args: []string{
-							"--v=2",
-							"--alsologtostderr",
-							"/config/auth_config.yml",
-						},
 						Env: []corev1.EnvVar{
 							{Name: "NAMESPACE", Value: cr.GetNamespace()},
+							{Name: "AUTH_SERVER_ADDR", Value: fmt.Sprintf(":%d", internalPortAuth)},
+							{Name: "AUTH_TOKEN_ISSUER", Value: authIssuerName},
 						},
 						VolumeMounts: authVolumeMounts,
 						Ports: []corev1.ContainerPort{
-							{Name: "auth", ContainerPort: 5001, Protocol: corev1.ProtocolTCP},
+							{Name: "auth", ContainerPort: internalPortAuth, Protocol: corev1.ProtocolTCP},
 						},
-						LivenessProbe: &corev1.Probe{
-							Handler: corev1.Handler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/",
-									Port: intstr.IntOrString{Type: intstr.Int, IntVal: 5000},
-								},
-							},
-							InitialDelaySeconds: 3,
-							PeriodSeconds:       3,
-						},
+						ReadinessProbe: httpProbe(internalPortAuth, "/"),
+						LivenessProbe:  httpProbe(internalPortAuth, "/"),
 						Resources: corev1.ResourceRequirements{
 							Limits: map[corev1.ResourceName]resource.Quantity{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -271,22 +258,14 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 						Image:           r.imageNginx,
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Ports: []corev1.ContainerPort{
-							{Name: "https", ContainerPort: 443, Protocol: corev1.ProtocolTCP},
-							{Name: "http", ContainerPort: 80, Protocol: corev1.ProtocolTCP},
+							{Name: "https", ContainerPort: internalPortNginx, Protocol: corev1.ProtocolTCP},
+							{Name: "http", ContainerPort: 8080, Protocol: corev1.ProtocolTCP},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "tls", MountPath: "/etc/nginx/tls"},
 						},
-						LivenessProbe: &corev1.Probe{
-							Handler: corev1.Handler{
-								HTTPGet: &corev1.HTTPGetAction{
-									Path: "/health",
-									Port: intstr.IntOrString{Type: intstr.Int, IntVal: 80},
-								},
-							},
-							InitialDelaySeconds: 3,
-							PeriodSeconds:       3,
-						},
+						ReadinessProbe: httpProbe(8080, "/health"),
+						LivenessProbe:  httpProbe(8080, "/health"),
 						Resources: corev1.ResourceRequirements{
 							Limits: map[corev1.ResourceName]resource.Quantity{
 								corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -301,5 +280,18 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 				},
 			},
 		},
+	}
+}
+
+func httpProbe(port int32, path string) *corev1.Probe {
+	return &corev1.Probe{
+		Handler: corev1.Handler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: path,
+				Port: intstr.IntOrString{Type: intstr.Int, IntVal: port},
+			},
+		},
+		InitialDelaySeconds: 3,
+		PeriodSeconds:       3,
 	}
 }

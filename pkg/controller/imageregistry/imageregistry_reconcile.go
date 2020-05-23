@@ -171,6 +171,9 @@ func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, o
 		}
 		return modify()
 	})
+	if err != nil {
+		err = fmt.Errorf("upsert %s %s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName(), err)
+	}
 	return
 }
 

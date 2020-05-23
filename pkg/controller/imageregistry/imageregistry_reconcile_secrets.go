@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	keyCACrt  = "ca.crt"
-	keyTLSCrt = "tls.crt"
-	keyTLSKey = "tls.key"
+	secretKeyCACrt  = "ca.crt"
+	secretKeyTLSCrt = "tls.crt"
+	secretKeyTLSKey = "tls.key"
 )
 
 type certFactory func() (*certs.KeyPair, error)
@@ -35,15 +35,15 @@ func (r *ReconcileImageRegistry) reconcileCertSecret(instance *registryapi.Image
 
 func certFromMap(m map[string][]byte) (c *certs.KeyPair) {
 	if m != nil {
-		c, _ = certs.X509KeyPair(m[keyTLSKey], m[keyTLSCrt], m[keyCACrt])
+		c, _ = certs.X509KeyPair(m[secretKeyTLSKey], m[secretKeyTLSCrt], m[secretKeyCACrt])
 	}
 	return
 }
 
 func certToMap(cert *certs.KeyPair) map[string][]byte {
 	return map[string][]byte{
-		keyCACrt:  cert.CACertPEM(),
-		keyTLSCrt: cert.CertPEM(),
-		keyTLSKey: cert.KeyPEM(),
+		secretKeyCACrt:  cert.CACertPEM(),
+		secretKeyTLSCrt: cert.CertPEM(),
+		secretKeyTLSKey: cert.KeyPEM(),
 	}
 }

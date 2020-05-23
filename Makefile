@@ -48,9 +48,9 @@ generate:
 	operator-sdk generate k8s
 	operator-sdk generate crds
 
-run-e2e-tests: operatorsdk-tests kubectl-tests
+run-e2e-tests: operatorsdk-tests-local kubectl-tests
 
-operatorsdk-tests:
+operatorsdk-tests-local:
 	kubectl create namespace $(TEST_NAMESPACE)
 	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --up-local; \
 	STATUS=$$?; \
