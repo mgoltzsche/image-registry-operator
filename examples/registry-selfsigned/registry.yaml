@@ -1,0 +1,12 @@
+apiVersion: registry.mgoltzsche.github.com/v1alpha1
+kind: ImageRegistry
+metadata:
+  name: registry
+spec:
+  replicas: 1
+  persistentVolumeClaim:
+    accessModes:
+    - ReadWriteOnce # If >1 replicas ever required ReadWriteMany must be set (which is the default)
+    resources:
+      requests:
+        storage: 8Gi

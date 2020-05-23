@@ -105,10 +105,15 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 
 	// Verify generated account
 	account = &operator.ImageRegistryAccount{}
-	accName := fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation)
-	accKey := types.NamespacedName{Name: accName, Namespace: c.CR.GetNamespace()}
+	accKey := types.NamespacedName{Namespace: c.CR.GetNamespace()}
+	accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation)
 	err = framework.Global.Client.Get(context.TODO(), accKey, account)
-	require.NoError(t, err, "account should exist")
+	if err != nil {
+		// status.rotation may have been incremented but account not yet created: query last account
+		accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation-1)
+		err = framework.Global.Client.Get(context.TODO(), accKey, account)
+		require.NoError(t, err, "account should exist")
+	}
 	require.True(t, account.Spec.Password != "", "account password set")
 	require.True(t, account.Spec.TTL != nil, "account TTL set")
 	require.Equal(t, 24*time.Hour, account.Spec.TTL.Duration, "account ttl")
@@ -129,8 +134,8 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 	usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, c.ExpectHostname)
 	err = bcrypt.CompareHashAndPassword([]byte(account.Spec.Password), []byte(pw))
 	require.NoError(t, err, "bcrypted password should match - CR/Secret sync issue?")
-	require.Equal(t, accName, usr, "username")
-	t.Logf("secret %s's password matches the one in account %s", secret.Name, accName)
+	require.Equal(t, accKey.Name, usr, "username")
+	t.Logf("secret %s's password matches the one in account %s", secret.Name, accKey.Name)
 
 	// Ensure that rotation does not happen when nothing changes
 	rotation = status.Rotation

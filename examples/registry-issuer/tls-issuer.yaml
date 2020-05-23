@@ -3,5 +3,6 @@ kind: Issuer
 metadata:
   name: registry-tls-issuer
 spec:
+  # here ACME could be used alternatively
   ca:
     secretName: registry-ca

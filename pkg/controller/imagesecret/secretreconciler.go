@@ -233,7 +233,7 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 	err = r.client.Create(context.TODO(), account)
 	if err != nil {
 		// Fail with error if account exists
-		// (doing the next attempt with incremented rotation count)
+		// (doing the next attempt with incremented rotation count/name)
 		return
 	}
 

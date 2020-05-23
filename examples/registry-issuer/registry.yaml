@@ -16,7 +16,6 @@ spec:
       name: registry-tls-issuer
       kind: Issuer
   persistentVolumeClaim:
-    #storageClassName: mysc
     accessModes:
     - ReadWriteOnce # If >1 replicas ever required ReadWriteMany must be set (which is the default)
     resources:

@@ -1,0 +1,8 @@
+bases:
+- github.com/mgoltzsche/nodehack/deploy
+
+resources:
+- registry.yaml
+
+patchesStrategicMerge:
+- registry-nodehack-daemonset-patch.yaml

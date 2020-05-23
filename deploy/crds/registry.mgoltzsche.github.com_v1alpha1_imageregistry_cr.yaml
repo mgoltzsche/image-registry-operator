@@ -13,12 +13,12 @@ spec:
       secretName: registry-ca
       # Secret is managed by cert-manager when issuerRef is set
       issuerRef:
-        name: registry-ca-issuer
+        name: registry-selfsigned-issuer
         kind: Issuer
   tls:
     secretName: registry-tls
     issuerRef:
-      name: my-tls-cert-issuer
+      name: my-lets-encrypt-issuer
       kind: Issuer
   persistentVolumeClaim:
     #storageClassName: mysc
