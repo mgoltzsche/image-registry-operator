@@ -2,12 +2,18 @@ apiVersion: registry.mgoltzsche.github.com/v1alpha1
 kind: ImageRegistry
 metadata:
   name: registry
-  namespace: build
 spec:
   replicas: 1
   auth:
+    ca:
+      secretName: registry-ca
+      issuerRef:
+        name: registry-selfsigned-issuer
+        kind: Issuer
+  tls:
+    secretName: registry-tls
     issuerRef:
-      name: registry-selfsigned-issuer
+      name: registry-tls-issuer
       kind: Issuer
   persistentVolumeClaim:
     #storageClassName: mysc

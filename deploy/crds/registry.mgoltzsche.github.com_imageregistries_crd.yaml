@@ -35,19 +35,28 @@ spec:
               description: AuthSpec specifies the CA certificate and optional docker_auth
                 ConfigMap name
               properties:
+                ca:
+                  description: CertificateSpec refers to a secret and an optional
+                    issuer to generate it
+                  properties:
+                    issuerRef:
+                      description: CertificateIssuerSpec refers to a certificate issuer
+                      properties:
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                      required:
+                      - kind
+                      - name
+                      type: object
+                    secretName:
+                      type: string
+                  type: object
                 configMapName:
                   type: string
-                issuerRef:
-                  description: CertificateIssuerSpec refers to a certificate issuer
-                  properties:
-                    kind:
-                      type: string
-                    name:
-                      type: string
-                  required:
-                  - kind
-                  - name
-                  type: object
+              required:
+              - ca
               type: object
             persistentVolumeClaim:
               description: PersistentVolumeClaimSpec specifies the PersistentVolumeClaim
@@ -83,7 +92,8 @@ spec:
               format: int32
               type: integer
             tls:
-              description: TLSSpec specifies the certificate that should be used
+              description: CertificateSpec refers to a secret and an optional issuer
+                to generate it
               properties:
                 issuerRef:
                   description: CertificateIssuerSpec refers to a certificate issuer
@@ -96,6 +106,8 @@ spec:
                   - kind
                   - name
                   type: object
+                secretName:
+                  type: string
               type: object
           required:
           - persistentVolumeClaim
@@ -148,6 +160,8 @@ spec:
             observedGeneration:
               format: int64
               type: integer
+            tlsSecretName:
+              type: string
           type: object
       type: object
   version: v1alpha1

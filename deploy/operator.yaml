@@ -32,8 +32,6 @@ spec:
               value: "image-registry-operator"
             - name: OPERATOR_DNS_ZONE
               value: "svc.example.org"
-            - name: OPERATOR_DEFAULT_CLUSTER_ISSUER
-              value: "registry-ca-issuer"
             - name: OPERATOR_SECRET_TTL
               value: "24h"
             - name: OPERATOR_DEFAULT_REGISTRY_NAME

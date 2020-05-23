@@ -2,7 +2,7 @@ image-registry-operator
 ===
 
 A Kubernetes operator that maintains in-cluster docker registries, accounts
-as well as separate push and pull secrets.
+as well as push and pull secrets.
 Granular authorization is supported by [cesanta/docker_auth](https://github.com/cesanta/docker_auth).  
 
 
@@ -15,6 +15,7 @@ This operator supports the following CRDs:
 * `ImagePullSecret` represents an `ImageRegistryAccount` in the referenced registry's namespace and a `kubernetes.io/dockerconfigjson` `Secret`.
 
 By default managed push and pull secrets are rotated every 24h.  
+
 Both push and pull secrets contain additional keys:
 * `hostname` - the registry's hostname _(to be used to define registry agnostic builds)_
 * `ca.crt` - the registry's CA certificate _(to support test installations using a self-signed CA)_
@@ -26,16 +27,16 @@ reflecting its current status and the cause in case of an error.
 # Kubernetes cluster requirements
 
 * LoadBalancer support
-* CoreDNS' static IP (`10.96.0.10`) must be configured as first nameserver on every node (avoid DNS loops!) (to resolve registry on nodes).
+* CoreDNS' static IP (`10.96.0.10`) must be configured as first nameserver on every node (avoid DNS loops!) to resolve registry on nodes.
 * CoreDNS should be configured with the `k8s_external` plugin exposing LoadBalancer Services under your public DNS zone (`OPERATOR_DNS_ZONE`).
-* [cert-manager](https://cert-manager.io/) should be installed.
+* optional: [cert-manager](https://cert-manager.io/) should be installed.
 
 
 # DNS
 
 An `ImageRegistry`'s hostname looks as follows: `<NAME>.<NAMESPACE>.<OPERATOR_DNS_ZONE>`.  
 
-Name resolution inside your k8s cluster and on its nodes can be done using the `k8s_external` CoreDNS plugin.
+Name resolution inside your k8s cluster and on its nodes can be done using the `k8s_external` CoreDNS plugin (see `./deploy/coredns-configmap.yaml`)
 For DNS resolution outside your cluster (if needed) [external-dns](https://github.com/kubernetes-sigs/external-dns)
 could be configured.
 
@@ -49,8 +50,7 @@ in your cluster and refer to an `Issuer` within your `ImageRegistry` resource
 to make it maintain the required `Certificate`s.  
 
 _Please note that, in case of a self-signed registry TLS CA, the CA certificate must be registered with the container runtime._
-_When this should be done dynamically CRI-O should be used since, at the time of writing, other container runtimes
-don't support reloading CAs without a restart._
+_For development purposes [nodehack](https://github.com/mgoltzsche/nodehack) can help with that._
 
 
 # Authorization
@@ -111,10 +111,10 @@ make e2e-tests
 
 The operator skeleton has been generated using the [operator-sdk](https://github.com/operator-framework):
 * The `deploy` directory contains the corresponding kubernetes manifests.
-* The `deploy/crds` directory is generated from `pkg/apis/registry/v1alpha1/*_types.go`.
+* The `deploy/crds` directory is generated from `pkg/apis/registry/*/*_types.go`.
 * The `pkg/controller/*` directories contain the code that handles the corresponding CRD.
 
-The CRD files in `deploy/crd` need to be regenerated as follows when an API type changes:
+The CRDs in `deploy/crd` and `zz_*.go` files need to be regenerated as follows when an API type changes:
 ```
 make generate
 ```

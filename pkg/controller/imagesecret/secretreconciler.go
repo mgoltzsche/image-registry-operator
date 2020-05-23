@@ -152,7 +152,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Fetch Secret
 	secret := &corev1.Secret{}
-	secret.Name = fmt.Sprintf("%s-image-%s-secret", instance.GetName(), r.cfg.Intent)
+	secret.Name = secretNameForCR(instance)
 	secret.Namespace = instance.GetNamespace()
 	secretExists, err := r.get(context.TODO(), secret)
 	if err != nil {
@@ -268,6 +268,10 @@ func accountNameForCR(cr registryapi.ImageSecretInterface) string {
 	return fmt.Sprintf("%s.%s.%s.%d", cr.GetRegistryAccessMode(), cr.GetNamespace(), cr.GetName(), cr.GetStatus().Rotation)
 }
 
+func secretNameForCR(cr registryapi.ImageSecretInterface) string {
+	return fmt.Sprintf("image%ssecret-%s", cr.GetRegistryAccessMode(), cr.GetName())
+}
+
 func (r *ReconcileImageSecret) getRegistryForCR(cr registryapi.ImageSecretInterface) (reg *targetRegistry, err error) {
 	registry := cr.GetRegistryRef()
 	if registry == nil {
@@ -288,19 +292,15 @@ func (r *ReconcileImageSecret) getRegistry(registryKey types.NamespacedName) (re
 	if !registryCR.Status.Conditions.IsTrueFor(imageregistry.ConditionReady) {
 		return nil, fmt.Errorf("ImageRegistry %s is not ready", registryKey)
 	}
-	key := types.NamespacedName{Name: imageregistry.TLSSecretNameForCR(registryCR), Namespace: registryKey.Namespace}
+	key := types.NamespacedName{Name: registryCR.Status.TLSSecretName, Namespace: registryKey.Namespace}
 	secret := &corev1.Secret{}
 	if err = r.cache.Get(ctx, key, secret); err != nil {
 		return
 	}
-	caCert, ok := secret.Data[secretCaCertKey]
-	if !ok {
-		return nil, fmt.Errorf("CA cert Secret %s does not contain %s", key, secretCaCertKey)
-	}
 	return &targetRegistry{
 		Namespace: registryCR.GetNamespace(),
 		Hostname:  registryCR.Status.Hostname,
-		CA:        caCert,
+		CA:        secret.Data[secretCaCertKey],
 	}, nil
 }
 

@@ -14,7 +14,7 @@ import (
 type ImageRegistrySpec struct {
 	Replicas              *int32                    `json:"replicas,omitempty"`
 	PersistentVolumeClaim PersistentVolumeClaimSpec `json:"persistentVolumeClaim"`
-	TLS                   TLSSpec                   `json:"tls,omitempty"`
+	TLS                   CertificateSpec           `json:"tls,omitempty"`
 	Auth                  AuthSpec                  `json:"auth,omitempty"`
 }
 
@@ -25,15 +25,16 @@ type PersistentVolumeClaimSpec struct {
 	Resources        corev1.ResourceRequirements         `json:"resources,omitempty" protobuf:"bytes,2,opt,name=resources"`
 }
 
-// TLSSpec specifies the certificate that should be used
-type TLSSpec struct {
-	IssuerRef *CertIssuerRefSpec `json:"issuerRef,omitempty"`
-}
-
 // AuthSpec specifies the CA certificate and optional docker_auth ConfigMap name
 type AuthSpec struct {
-	ConfigMapName *string            `json:"configMapName,omitempty"`
-	IssuerRef     *CertIssuerRefSpec `json:"issuerRef,omitempty"`
+	ConfigMapName *string         `json:"configMapName,omitempty"`
+	CA            CertificateSpec `json:"ca"`
+}
+
+// CertificateSpec refers to a secret and an optional issuer to generate it
+type CertificateSpec struct {
+	IssuerRef  *CertIssuerRefSpec `json:"issuerRef,omitempty"`
+	SecretName *string            `json:"secretName,omitempty"`
 }
 
 // CertificateIssuerSpec refers to a certificate issuer
@@ -47,6 +48,7 @@ type ImageRegistryStatus struct {
 	Conditions         status.Conditions `json:"conditions,omitempty"`
 	ObservedGeneration int64             `json:"observedGeneration,omitempty"`
 	Hostname           string            `json:"hostname,omitempty"`
+	TLSSecretName      string            `json:"tlsSecretName,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

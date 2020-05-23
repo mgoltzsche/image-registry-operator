@@ -27,7 +27,7 @@ type ImageSecretTestCase struct {
 }
 
 func (c *ImageSecretTestCase) SecretName() string {
-	return fmt.Sprintf("%s-image-%s-secret", c.CR.GetName(), c.AccessMode)
+	return fmt.Sprintf("image%ssecret-%s", c.AccessMode, c.CR.GetName())
 }
 
 func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase) {

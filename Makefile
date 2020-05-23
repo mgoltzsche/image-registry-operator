@@ -3,8 +3,9 @@ TEST_IMAGE=image-registry-operator-test
 TEST_NAMESPACE=image-registry-operator-test-$(shell date '+%Y%m%d-%H%M%S')
 define TESTDOCKERFILE
 	FROM $(TEST_IMAGE)
-	ENV K8S_VERSION=v1.17.3
-	RUN curl -fsSLo /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$${K8S_VERSION}/bin/linux/amd64/kubectl \
+	ENV K8S_VERSION=v1.18.2
+	RUN apk add --update --no-cache git \
+		&& curl -fsSLo /usr/local/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/$${K8S_VERSION}/bin/linux/amd64/kubectl \
 		&& chmod +x /usr/local/bin/kubectl
 	#ENV OPERATOR_SDK_VERSION=v0.16.0
 	#RUN curl -fsSLo /usr/local/bin/operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/$${OPERATOR_SDK_VERSION}/operator-sdk-$${OPERATOR_SDK_VERSION}-x86_64-linux-gnu \
@@ -47,13 +48,17 @@ generate:
 	operator-sdk generate k8s
 	operator-sdk generate crds
 
-run-e2e-tests:
+run-e2e-tests: operatorsdk-tests kubectl-tests
+
+operatorsdk-tests:
 	kubectl create namespace $(TEST_NAMESPACE)
-	kubectl apply -f ./deploy/registry_ca_cluster_issuer.yaml
 	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --up-local; \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE); \
 	exit $$STATUS
+
+kubectl-tests:
+	./test/test.sh
 
 install-tools: download-deps
 	cat tools.go | grep -E '^\s*_' | cut -d'"' -f2 | xargs -n1 go install

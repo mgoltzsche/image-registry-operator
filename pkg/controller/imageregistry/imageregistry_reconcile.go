@@ -19,15 +19,14 @@ import (
 )
 
 const (
-	ConditionSynced         = status.ConditionType("Synced")
-	ConditionReady          = status.ConditionType("Ready")
-	ReasonFailedSync        = status.ConditionReason("FailedSync")
-	ReasonUpdating          = status.ConditionReason("Updating")
-	EnvDefaultClusterIssuer = "OPERATOR_DEFAULT_CLUSTER_ISSUER"
-	EnvDnsZone              = "OPERATOR_DNS_ZONE"
-	EnvImageAuth            = "OPERATOR_IMAGE_AUTH"
-	EnvImageNginx           = "OPERATOR_IMAGE_NGINX"
-	EnvImageRegistry        = "OPERATOR_IMAGE_REGISTRY"
+	ConditionSynced  = status.ConditionType("Synced")
+	ConditionReady   = status.ConditionType("Ready")
+	ReasonFailedSync = status.ConditionReason("FailedSync")
+	ReasonUpdating   = status.ConditionReason("Updating")
+	EnvDnsZone       = "OPERATOR_DNS_ZONE"
+	EnvImageAuth     = "OPERATOR_IMAGE_AUTH"
+	EnvImageNginx    = "OPERATOR_IMAGE_NGINX"
+	EnvImageRegistry = "OPERATOR_IMAGE_REGISTRY"
 )
 
 // blank assignment to verify that ReconcileImageRegistry implements reconcile.Reconciler
@@ -37,14 +36,13 @@ var _ reconcile.Reconciler = &ReconcileImageRegistry{}
 type ReconcileImageRegistry struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client               client.Client
-	scheme               *runtime.Scheme
-	reconcileTasks       []reconcileTask
-	defaultClusterIssuer string
-	dnsZone              string
-	imageAuth            string
-	imageNginx           string
-	imageRegistry        string
+	client         client.Client
+	scheme         *runtime.Scheme
+	reconcileTasks []reconcileTask
+	dnsZone        string
+	imageAuth      string
+	imageNginx     string
+	imageRegistry  string
 }
 
 type reconcileTask func(*registryv1alpha1.ImageRegistry, logr.Logger) error
@@ -52,13 +50,12 @@ type reconcileTask func(*registryv1alpha1.ImageRegistry, logr.Logger) error
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	r := &ReconcileImageRegistry{
-		client:               mgr.GetClient(),
-		scheme:               mgr.GetScheme(),
-		defaultClusterIssuer: os.Getenv(EnvDefaultClusterIssuer),
-		dnsZone:              os.Getenv(EnvDnsZone),
-		imageAuth:            os.Getenv(EnvImageAuth),
-		imageNginx:           os.Getenv(EnvImageNginx),
-		imageRegistry:        os.Getenv(EnvImageRegistry),
+		client:        mgr.GetClient(),
+		scheme:        mgr.GetScheme(),
+		dnsZone:       os.Getenv(EnvDnsZone),
+		imageAuth:     os.Getenv(EnvImageAuth),
+		imageNginx:    os.Getenv(EnvImageNginx),
+		imageRegistry: os.Getenv(EnvImageRegistry),
 	}
 	if r.dnsZone == "" {
 		r.dnsZone = "svc.cluster.local"
@@ -73,8 +70,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		r.imageRegistry = "registry:2"
 	}
 	r.reconcileTasks = []reconcileTask{
-		r.reconcileCaCertAndIssuer,
-		r.reconcileTlsCert,
+		r.reconcileCertificates,
 		r.reconcileServiceAccount,
 		r.reconcileRole,
 		r.reconcileRoleBinding,
@@ -143,11 +139,14 @@ func (r *ReconcileImageRegistry) Reconcile(request reconcile.Request) (reconcile
 	}
 	instance.Status.Conditions = conditions
 	hostname := r.externalHostnameForCR(instance)
+	tlsSecretName := tlsSecretNameForCR(instance)
 	changedGeneration := instance.Status.ObservedGeneration != instance.Generation
 	changedHost := instance.Status.Hostname != hostname
-	if changedCond || changedGeneration || changedHost {
+	changedTLSSecretName := instance.Status.TLSSecretName != tlsSecretName
+	if changedCond || changedGeneration || changedHost || changedTLSSecretName {
 		instance.Status.ObservedGeneration = instance.Generation
 		instance.Status.Hostname = hostname
+		instance.Status.TLSSecretName = tlsSecretName
 		if e := r.client.Status().Update(context.TODO(), instance); e != nil && err == nil {
 			err = e
 		}
@@ -192,21 +191,39 @@ func serviceNameForCR(cr *registryv1alpha1.ImageRegistry) string {
 }
 
 func pvcNameForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return cr.Name + "-pvc"
+	return "imageregistry-" + cr.Name + "-pvc"
 }
 
-func TLSSecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return cr.Name + "-tls"
+func tlsCertNameForCR(cr *registryv1alpha1.ImageRegistry) string {
+	return "imageregistry-" + cr.Name + "-tls"
 }
 
-func caSecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return cr.Name + "-ca"
+func tlsSecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
+	name := cr.Spec.TLS.SecretName
+	if name != nil {
+		return *name
+	}
+	if cr.Spec.TLS.IssuerRef == nil {
+		return "imageregistry-" + cr.Name + "-selfsigned-tls"
+	}
+	return "imageregistry-" + cr.Name + "-cm-tls"
 }
 
-func caIssuerNameForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return cr.Name + "-ca-issuer"
+func authCACertNameForCR(cr *registryv1alpha1.ImageRegistry) string {
+	return "imageregistry-" + cr.Name + "-auth-ca"
+}
+
+func authCASecretNameForCR(cr *registryv1alpha1.ImageRegistry) string {
+	name := cr.Spec.Auth.CA.SecretName
+	if name != nil {
+		return *name
+	}
+	if cr.Spec.Auth.CA.IssuerRef == nil {
+		return "imageregistry-" + cr.Name + "-selfsigned-auth-ca"
+	}
+	return "imageregistry-" + cr.Name + "-cm-auth-ca"
 }
 
 func serviceAccountNameForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return cr.Name + "-imageregistry"
+	return "imageregistry-" + cr.Name
 }

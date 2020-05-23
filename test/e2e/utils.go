@@ -15,7 +15,7 @@ import (
 )
 
 func WaitForCondition(t *testing.T, obj runtime.Object, name, ns string, pollTimeout time.Duration, condition func() []string) (err error) {
-	t.Logf("waiting up to %v for %s to become ready", pollTimeout, name)
+	t.Logf("waiting up to %v for %s condition...", pollTimeout, name)
 	err = wait.PollImmediate(time.Second, pollTimeout, func() (bool, error) {
 		key := dynclient.ObjectKey{Name: name, Namespace: ns}
 		if err = framework.Global.Client.Get(context.TODO(), key, obj); err != nil {

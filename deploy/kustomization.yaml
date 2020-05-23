@@ -7,7 +7,4 @@ resources:
 - role.yaml
 - role_binding.yaml
 - operator.yaml
-- registry_ca_cluster_issuer.yaml
-#- registry_rbac.yaml
-
-namespace: build
+#- coredns-configmap.yaml

@@ -23,18 +23,30 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 	namespace := f.Namespace
 
 	// Insert ImageRegistry CR
+	//authSecretName := "test-auth-ca"
+	//tlsSecretName := "test-tls"
 	cr = &operator.ImageRegistry{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-registry",
 			Namespace: namespace,
 		},
 		Spec: operator.ImageRegistrySpec{
-			Auth: operator.AuthSpec{
-				IssuerRef: &operator.CertIssuerRefSpec{
-					Name: "registry-ca-issuer",
-					Kind: "ClusterIssuer",
+			/*Auth: operator.AuthSpec{
+				CA: operator.CertificateSpec{
+					SecretName: &authSecretName,
+					IssuerRef: &operator.CertIssuerRefSpec{
+						Name: "registry-ca-issuer",
+						Kind: "Issuer",
+					},
 				},
 			},
+			TLS: operator.CertificateSpec{
+				SecretName: &tlsSecretName,
+				IssuerRef: &operator.CertIssuerRefSpec{
+					Name: "registry-ca-issuer",
+					Kind: "Issuer",
+				},
+			},*/
 			PersistentVolumeClaim: operator.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 				Resources: corev1.ResourceRequirements{
@@ -48,17 +60,17 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 	err := f.Client.Create(context.TODO(), cr, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
 	require.NoError(t, err, "create ImageRegistry")
 
-	// Wait for CA certificate to become ready
-	waitForCertReady(t, namespace, cr.Name+"-ca", cr.Spec.Auth.IssuerRef)
+	/*// Wait for auth certificate to become ready
+	waitForCertReady(t, namespace, "imageregistry-"+cr.Name+"-auth-ca", authSecretName, cr.Spec.Auth.CA.IssuerRef)
 
 	// Wait for TLS certificate to become ready
-	waitForCertReady(t, namespace, cr.Name+"-tls", &operator.CertIssuerRefSpec{
+	waitForCertReady(t, namespace, "imageregistry-"+cr.Name+"-tls", tlsSecretName, &operator.CertIssuerRefSpec{
 		Name: cr.Name + "-ca-issuer",
 		Kind: "Issuer",
-	})
+	})*/
 
 	// Wait for ImageRegistry to become synced (fail fast)
-	err = WaitForCondition(t, cr, cr.GetName(), namespace, 10*time.Second, func() (c []string) {
+	err = WaitForCondition(t, cr, cr.GetName(), namespace, 20*time.Second, func() (c []string) {
 		if cr.Status.ObservedGeneration != cr.Generation {
 			c = append(c, fmt.Sprintf("$.status.observedGeneration == %d (was %v)", cr.Generation, cr.Status.ObservedGeneration))
 		}
@@ -108,13 +120,13 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 	return
 }
 
-func waitForCertReady(t *testing.T, namespace, certName string, expectedIssuer *operator.CertIssuerRefSpec) {
+func waitForCertReady(t *testing.T, namespace, certName, expectedSecretName string, expectedIssuer *operator.CertIssuerRefSpec) {
 	cert := &certmgr.Certificate{}
 	err := WaitForCondition(t, cert, certName, namespace, 15*time.Second, func() (c []string) {
 		expectIssuer := fmt.Sprintf("%s/%s", expectedIssuer.Kind, expectedIssuer.Name)
 		actualIssuer := fmt.Sprintf("%s/%s", cert.Spec.IssuerRef.Kind, cert.Spec.IssuerRef.Name)
 		require.Equal(t, expectIssuer, actualIssuer, "cert %s issuer", certName)
-		require.Equal(t, certName, cert.Spec.SecretName, "cert %s secret name", certName)
+		require.Equal(t, expectedSecretName, cert.Spec.SecretName, "cert %s secret name", certName)
 
 		for _, cond := range cert.Status.Conditions {
 			if cond.Type == certmgr.CertificateConditionReady {

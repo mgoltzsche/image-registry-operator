@@ -1,6 +1,7 @@
 apiVersion: cert-manager.io/v1alpha3
 kind: Issuer
 metadata:
-  name: registry-selfsigned-issuer
+  name: registry-tls-issuer
 spec:
-  selfSigned: {}
+  ca:
+    secretName: registry-ca

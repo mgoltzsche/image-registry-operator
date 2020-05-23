@@ -6,11 +6,20 @@ metadata:
 spec:
   replicas: 1
   auth:
-    #configMapName: my-auth-configmap
+    # Uncomment to specify custom cesanta/docker_auth configuration:
+    #configMapName: docker-auth-configmap
+    ca:
+      # certificate used to sign/verify docker auth tokens
+      secretName: registry-ca
+      # Secret is managed by cert-manager when issuerRef is set
+      issuerRef:
+        name: registry-ca-issuer
+        kind: Issuer
+  tls:
+    secretName: registry-tls
     issuerRef:
-      name: registry-ca-issuer
-      kind: ClusterIssuer
-  tls: {} # separate issuerRef could be specified here, otherwise auth's is used
+      name: my-tls-cert-issuer
+      kind: Issuer
   persistentVolumeClaim:
     #storageClassName: mysc
     accessModes:
