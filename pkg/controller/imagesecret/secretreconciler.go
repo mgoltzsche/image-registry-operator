@@ -58,7 +58,7 @@ func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSe
 		ns, err := k8sutil.GetOperatorNamespace()
 		if err != nil {
 			ns = os.Getenv("WATCH_NAMESPACE")
-			if ns == "" || ns == "*" {
+			if ns == "" {
 				panic(fmt.Sprintf("could not detect operator namespace to derive %s - set it alternatively", EnvDefaultRegistryNamespace))
 			}
 		}

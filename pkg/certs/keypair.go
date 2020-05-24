@@ -66,11 +66,22 @@ func (p *KeyPair) KeyPEM() []byte {
 	return privKeyPEM.Bytes()
 }
 
-func (p *KeyPair) NeedsRenewal() bool {
+func (p *KeyPair) DNSNames() []string {
+	return p.x509Cert.DNSNames
+}
+
+func (p *KeyPair) IsCA() bool {
+	return p.x509Cert.IsCA
+}
+
+func (p *KeyPair) NextRenewal() time.Time {
 	cert := p.x509Cert
 	ttl := cert.NotAfter.Sub(cert.NotBefore)
-	renewalTime := cert.NotAfter.Add(ttl / -4)
-	return time.Now().After(renewalTime)
+	return cert.NotAfter.Add(ttl / -4)
+}
+
+func (p *KeyPair) NeedsRenewal() bool {
+	return time.Now().After(p.NextRenewal())
 }
 
 func NewSelfSignedCAKeyPair(commonName string) (*KeyPair, error) {
