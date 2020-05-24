@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
+	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,23 +18,49 @@ import (
 var (
 	ErrUnmanagedValidSecretExists   = errors.New("refuse to overwrite valid unmanaged cert secret")
 	ErrUnmanagedInvalidSecretExists = errors.New("refuse to overwrite invalid/renewable unmanaged cert secret")
+	rootCASecretLabels              = map[string]string{"name": "image-registry-operator"}
 )
 
 const (
-	secretKeyCACrt  = "ca.crt"
-	secretKeyTLSCrt = "tls.crt"
-	secretKeyTLSKey = "tls.key"
-	labelManagedBy  = "app.kubernetes.io/managed-by"
-	operatorName    = "image-registry-operator"
+	secretKeyCACrt   = "ca.crt"
+	secretKeyTLSCrt  = "tls.crt"
+	secretKeyTLSKey  = "tls.key"
+	labelManagedBy   = "app.kubernetes.io/managed-by"
+	operatorName     = "image-registry-operator"
+	rootCACommonName = "image-registry-operator.caroot.local"
 )
 
-type CertManager struct {
-	client client.Client
-	scheme *runtime.Scheme
+func RootCASecretName() types.NamespacedName {
+	ns, err := k8sutil.GetOperatorNamespace()
+	if err != nil {
+		ns = os.Getenv("WATCH_NAMESPACE")
+		if ns == "" {
+			panic(err)
+		}
+	}
+	return types.NamespacedName{Name: "image-registry-root-ca", Namespace: ns}
 }
 
-func NewCertManager(client client.Client, scheme *runtime.Scheme) *CertManager {
-	return &CertManager{client, scheme}
+type CertManager struct {
+	client           client.Client
+	scheme           *runtime.Scheme
+	rootCASecretName types.NamespacedName
+}
+
+func NewCertManager(client client.Client, scheme *runtime.Scheme, rootCASecretName types.NamespacedName) *CertManager {
+	return &CertManager{client, scheme, rootCASecretName}
+}
+
+func (r *CertManager) RootCACert() (*KeyPair, error) {
+	return r.KeyPair(r.rootCASecretName)
+}
+
+func (r *CertManager) RenewRootCACertSecret() (*KeyPair, error) {
+	ca, err := r.RenewCACertSecret(r.rootCASecretName, nil, rootCASecretLabels, rootCACommonName)
+	if err != nil && (errors.Unwrap(err) != ErrUnmanagedValidSecretExists || ca == nil) {
+		return nil, err
+	}
+	return ca, nil
 }
 
 func (r *CertManager) RenewCACertSecret(key types.NamespacedName, owner metav1.Object, labels map[string]string, commonName string) (cert *KeyPair, err error) {

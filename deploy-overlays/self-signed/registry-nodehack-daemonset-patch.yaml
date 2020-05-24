@@ -15,4 +15,4 @@ spec:
       volumes:
       - name: ca-cert
         secret:
-          secretName: imageregistry-registry-auth-ca
+          secretName: image-registry-root-ca

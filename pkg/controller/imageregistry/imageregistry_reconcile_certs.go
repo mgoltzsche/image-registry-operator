@@ -1,7 +1,6 @@
 package imageregistry
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -9,13 +8,8 @@ import (
 	certmgr "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	certmgrmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
-	"github.com/mgoltzsche/image-registry-operator/pkg/certs"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-)
-
-var (
-	labels = map[string]string{"name": "image-registry-operator"}
 )
 
 func (r *ReconcileImageRegistry) reconcileTokenCert(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
@@ -68,8 +62,8 @@ func (r *ReconcileImageRegistry) reconcileTLSCert(instance *registryv1alpha1.Ima
 			return nil
 		})
 	} else if instance.Spec.TLS.SecretName == nil {
-		ca, e := r.certManager.RenewCACertSecret(r.rootCASecretName, nil, labels, "image-registry-operator.caroot.local")
-		if e != nil && (errors.Unwrap(e) != certs.ErrUnmanagedValidSecretExists || ca == nil) {
+		ca, e := r.certManager.RootCACert()
+		if e != nil {
 			return e
 		}
 		key := types.NamespacedName{Name: secretName, Namespace: instance.Namespace}

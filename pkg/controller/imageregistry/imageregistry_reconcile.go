@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -38,30 +37,28 @@ var _ reconcile.Reconciler = &ReconcileImageRegistry{}
 type ReconcileImageRegistry struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client           client.Client
-	scheme           *runtime.Scheme
-	certManager      *certs.CertManager
-	rootCASecretName types.NamespacedName
-	reconcileTasks   []reconcileTask
-	dnsZone          string
-	imageAuth        string
-	imageNginx       string
-	imageRegistry    string
+	client         client.Client
+	scheme         *runtime.Scheme
+	certManager    *certs.CertManager
+	reconcileTasks []reconcileTask
+	dnsZone        string
+	imageAuth      string
+	imageNginx     string
+	imageRegistry  string
 }
 
 type reconcileTask func(*registryv1alpha1.ImageRegistry, logr.Logger) error
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, rootCASecretName types.NamespacedName) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	r := &ReconcileImageRegistry{
-		client:           mgr.GetClient(),
-		scheme:           mgr.GetScheme(),
-		certManager:      certs.NewCertManager(mgr.GetClient(), mgr.GetScheme()),
-		rootCASecretName: rootCASecretName,
-		dnsZone:          os.Getenv(EnvDnsZone),
-		imageAuth:        os.Getenv(EnvImageAuth),
-		imageNginx:       os.Getenv(EnvImageNginx),
-		imageRegistry:    os.Getenv(EnvImageRegistry),
+		client:        mgr.GetClient(),
+		scheme:        mgr.GetScheme(),
+		certManager:   certs.NewCertManager(mgr.GetClient(), mgr.GetScheme(), certs.RootCASecretName()),
+		dnsZone:       os.Getenv(EnvDnsZone),
+		imageAuth:     os.Getenv(EnvImageAuth),
+		imageNginx:    os.Getenv(EnvImageNginx),
+		imageRegistry: os.Getenv(EnvImageRegistry),
 	}
 	if r.dnsZone == "" {
 		r.dnsZone = "svc.cluster.local"
