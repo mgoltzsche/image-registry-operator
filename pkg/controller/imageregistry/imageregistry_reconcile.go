@@ -53,11 +53,10 @@ type reconcileTask func(*registryv1alpha1.ImageRegistry, logr.Logger) error
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager, rootCASecretName types.NamespacedName) reconcile.Reconciler {
-	client := mgr.GetClient()
 	r := &ReconcileImageRegistry{
-		client:           client,
+		client:           mgr.GetClient(),
 		scheme:           mgr.GetScheme(),
-		certManager:      certs.NewCertManager(client),
+		certManager:      certs.NewCertManager(mgr.GetClient(), mgr.GetScheme()),
 		rootCASecretName: rootCASecretName,
 		dnsZone:          os.Getenv(EnvDnsZone),
 		imageAuth:        os.Getenv(EnvImageAuth),
