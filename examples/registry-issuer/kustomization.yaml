@@ -1,10 +1,4 @@
-bases:
-- github.com/mgoltzsche/nodehack/deploy
-
 resources:
 - selfsigned-issuer.yaml
 - tls-issuer.yaml
 - registry.yaml
-
-patchesStrategicMerge:
-- registry-nodehack-daemonset-patch.yaml

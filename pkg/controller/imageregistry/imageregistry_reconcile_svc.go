@@ -73,10 +73,20 @@ func (r *ReconcileImageRegistry) reconcilePersistentVolumeClaim(instance *regist
 	pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
 	return r.client.Patch(ctx, pvc, patch)*/
 
-	return r.upsert(instance, pvc, reqLogger, func() error {
+	var owner *registryv1alpha1.ImageRegistry
+	if instance.Spec.PersistentVolumeClaim.DeleteClaim {
+		owner = instance
+	}
+
+	return r.upsert(owner, pvc, reqLogger, func() error {
+		if owner == nil {
+			pvc.SetLabels(selectorLabelsForCR(instance))
+			pvc.OwnerReferences = nil
+		}
 		if storageClassName != nil {
 			pvc.Spec.StorageClassName = storageClassName
 		}
+
 		pvc.Spec.AccessModes = accessModes
 		pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
 		return nil

@@ -2,7 +2,6 @@ apiVersion: registry.mgoltzsche.github.com/v1alpha1
 kind: ImageRegistry
 metadata:
   name: registry
-  namespace: build
 spec:
   replicas: 1
   auth:
@@ -21,7 +20,8 @@ spec:
       name: my-lets-encrypt-issuer
       kind: Issuer
   persistentVolumeClaim:
-    #storageClassName: mysc
+    deleteClaim: false
+    storageClassName: standard
     accessModes:
     - ReadWriteOnce # If >1 replicas ever required ReadWriteMany must be set (which is the default)
     resources:

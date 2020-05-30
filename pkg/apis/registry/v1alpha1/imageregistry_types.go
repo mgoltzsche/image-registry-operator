@@ -23,6 +23,7 @@ type PersistentVolumeClaimSpec struct {
 	StorageClassName *string                             `json:"storageClassName,omitempty"`
 	AccessModes      []corev1.PersistentVolumeAccessMode `json:"accessModes,omitempty" protobuf:"bytes,1,rep,name=accessModes,casttype=PersistentVolumeAccessMode"`
 	Resources        corev1.ResourceRequirements         `json:"resources,omitempty" protobuf:"bytes,2,opt,name=resources"`
+	DeleteClaim      bool                                `json:"deleteClaim,omitempty"`
 }
 
 // AuthSpec specifies the CA certificate and optional docker_auth ConfigMap name

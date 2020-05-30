@@ -169,9 +169,11 @@ func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, o
 		if obj.GetAnnotations() == nil {
 			obj.SetAnnotations(map[string]string{})
 		}
-		obj.SetLabels(selectorLabelsForCR(owner))
-		if e = controllerutil.SetControllerReference(owner, obj, r.scheme); e != nil {
-			return
+		if owner != nil {
+			obj.SetLabels(selectorLabelsForCR(owner))
+			if e = controllerutil.SetControllerReference(owner, obj, r.scheme); e != nil {
+				return
+			}
 		}
 		return modify()
 	})

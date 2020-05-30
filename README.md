@@ -58,33 +58,84 @@ Authorization can be specified per `ImageRegistry` using [docker_auth's ACL](htt
 
 # Installation
 
-Install the operator (you may want to specify `OPERATOR_DNS_ZONE` env var with your public DNS zone, the default is `svc.example.org`):
+Here is how to install the operator.
+
+## Generic installation
+
+Install the operator namespace-scoped in the default namespace with its `OPERATOR_DNS_ZONE` env var defaulting to `svc.cluster.local`:
 ```
 kubectl apply -k ./deploy
 ```
 
+## Install on Minikube
 
-# Usage example
-
-Create a (the default) `ImageRegistry` (maintains a StatefulSet and LoadBalancer Service):
+Create a Minikube cluster using CRI-O:
 ```
-kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imageregistry_cr.yaml
-```
-
-Create an `ImagePushSecret` (maintains an `ImageRegistryAccount` and a Secret `<CR_NAME>-image-push-secret`):
-```
-kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imagepushsecret_cr.yaml
+make start-minikube
 ```
 
-Create an `ImagePullSecret` (maintains an `ImageRegistryAccount` and a Secret `<CR_NAME>-image-pull-secret`):
+Install the operator cluster-wide with [nodehack](https://github.com/mgoltzsche/nodehack):
 ```
-kubectl apply -f ./deploy/crds/registry.mgoltzsche.github.com_v1alpha1_imagepullsecret_cr.yaml
+kubectl apply -k ./deploy-overlays/self-signed
 ```
 
-Configure your local host to use the previously created `ImagePushSecret`'s Docker config:
+# Usage examples
+
+Create an `ImageRegistry`:
 ```
-kubectl get -n build secret example-imagepushsecret-image-push-secret -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
+kubectl apply -f - <<-EOF
+	apiVersion: registry.mgoltzsche.github.com/v1alpha1
+	kind: ImageRegistry
+	metadata:
+	  name: registry
+	spec:
+	  replicas: 1
+	  tls: {}
+	  # In production you may want to specify the TLS certificate
+	  # by either providing a secret or referring to a cert-manager issuer:
+	  #  secretName: my-registry-tls
+	  #  issuerRef:
+	  #    name: my-lets-encrypt-issuer
+	  #    kind: Issuer
+	  persistentVolumeClaim:
+	    # You may want to use a different StorageClass here:
+	    storageClassName: standard
+	    accessModes:
+	    - ReadWriteOnce # If >1 replicas ever required ReadWriteMany must be set (which is the default)
+	    resources:
+	      requests:
+	        storage: 1Gi
+EOF
 ```
+
+Create an `ImagePushSecret`:
+```
+kubectl apply -f - <<-EOF
+	apiVersion: registry.mgoltzsche.github.com/v1alpha1
+	kind: ImagePushSecret
+	metadata:
+	  name: example
+	spec:
+	  registryRef: # when omitted operator's default registry is used
+	    name: registry
+	    #namespace: infra # another namespace's registry could be used
+EOF
+```
+
+Create an `ImagePullSecret`:
+```
+kubectl apply -f - <<-EOF
+	apiVersion: registry.mgoltzsche.github.com/v1alpha1
+	kind: ImagePullSecret
+	metadata:
+	  name: example
+	spec:
+	  registryRef:
+	    name: registry
+EOF
+```
+
+_Also see `./examples` directory._
 
 
 # How to build
@@ -99,8 +150,10 @@ Run unit tests:
 ```
 make unit-tests
 ```
-Run e2e tests (requires a kubernetes cluster and its KUBECONFIG env var populated):
+Run e2e tests:
 ```
+make start-minikube
+export KUBECONFIG=$(pwd)/.kube/config
 make e2e-tests
 ```
 

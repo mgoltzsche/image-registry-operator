@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	certmgr "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
+	//certmgr "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"github.com/mgoltzsche/image-registry-operator/pkg/apis"
 	operator "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	framework "github.com/operator-framework/operator-sdk/pkg/test"
@@ -16,8 +16,9 @@ func TestOperator(t *testing.T) {
 	err := framework.AddToFrameworkScheme(apis.AddToScheme, &operator.ImageRegistryList{})
 	require.NoError(t, err)
 
-	err = framework.AddToFrameworkScheme(certmgr.AddToScheme, &certmgr.CertificateList{})
-	require.NoError(t, err)
+	// enable to test with cert-manager:
+	//err = framework.AddToFrameworkScheme(certmgr.AddToScheme, &certmgr.CertificateList{})
+	//require.NoError(t, err)
 
 	ctx := framework.NewContext(t)
 	defer ctx.Cleanup()

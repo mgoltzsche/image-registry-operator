@@ -15,7 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ImageSecretTestCase struct {
@@ -82,38 +81,51 @@ func triggerCredentialRotation(t *testing.T, c ImageSecretTestCase) {
 func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account *operator.ImageRegistryAccount, usr, pw string) {
 	secretCR := c.CR
 	ns := secretCR.GetNamespace()
-	secretKey := dynclient.ObjectKey{Name: c.SecretName(), Namespace: ns}
 	status := secretCR.GetStatus()
 	rotation := status.Rotation
-	err := WaitForCondition(t, secretCR, secretCR.GetName(), ns, 10*time.Second, func() (c []string) {
+	secret := &corev1.Secret{}
+	secretKey := types.NamespacedName{Name: c.SecretName(), Namespace: ns}
+	account = &operator.ImageRegistryAccount{}
+	accKey := types.NamespacedName{Namespace: c.CR.GetNamespace()}
+	err := WaitForCondition(t, secretCR, secretCR.GetName(), ns, 10*time.Second, func() (pending []string) {
 		if !status.Conditions.IsTrueFor("Ready") {
 			cond := status.Conditions.GetCondition("Ready")
 			if cond == nil {
-				c = append(c, "Ready")
+				pending = append(pending, "Ready")
 			} else {
-				c = append(c, fmt.Sprintf("Ready{%s: %s}", cond.Reason, cond.Message))
+				pending = append(pending, fmt.Sprintf("Ready{%s: %s}", cond.Reason, cond.Message))
 			}
+			return
 		}
 		if status.Rotation <= rotation {
-			c = append(c, "rotationIncrement")
+			pending = append(pending, "rotationIncrement")
+			return
 		}
+
+		// Fetch account
+		accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation)
+		if e := framework.Global.Client.Get(context.TODO(), accKey, account); e != nil {
+			pending = append(pending, "account: "+e.Error())
+			return
+		}
+		// Fetch & verify secret
+		e := framework.Global.Client.Get(context.TODO(), secretKey, secret)
+		require.NoError(t, e, "secret lookup when CR ready")
+		require.Equal(t, c.SecretType, secret.Type, "resulting secret's type")
+		require.True(t, len(secret.Data["ca.crt"]) > 0, "resulting secret should have ca.crt entry")
+		require.Equal(t, c.ExpectHostname, string(secret.Data["hostname"]), "resulting secret's hostname entry")
+		usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, c.ExpectHostname)
+		if accKey.Name != usr {
+			pending = append(pending, fmt.Sprintf("secretloginname{%s -> %d}", usr, status.Rotation))
+		}
+		require.Equal(t, accKey.Name, usr, "username")
 		return
 	})
 	require.NoError(t, err, "wait for %T to update (rotation %d)", secretCR, rotation+1)
 	require.True(t, rotation < status.Rotation && status.Rotation < rotation+4, "rotation: %d < r < %d, r = %d", rotation, rotation+4, status.Rotation)
 	require.NotNil(t, status.RotationDate, "rotation date")
 
-	// Verify generated account
-	account = &operator.ImageRegistryAccount{}
-	accKey := types.NamespacedName{Namespace: c.CR.GetNamespace()}
-	accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation)
-	err = framework.Global.Client.Get(context.TODO(), accKey, account)
-	if err != nil {
-		// status.rotation may have been incremented but account not yet created: query last account
-		accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation-1)
-		err = framework.Global.Client.Get(context.TODO(), accKey, account)
-		require.NoError(t, err, "account should exist")
-	}
+	// Verify account
 	require.True(t, account.Spec.Password != "", "account password set")
 	require.True(t, account.Spec.TTL != nil, "account TTL set")
 	require.Equal(t, 24*time.Hour, account.Spec.TTL.Duration, "account ttl")
@@ -124,17 +136,9 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 	}
 	require.Equal(t, expectedLabels, account.Spec.Labels, "account labels")
 
-	// Verify generated Secret
-	secret := &corev1.Secret{}
-	err = framework.Global.Client.Get(context.TODO(), secretKey, secret)
-	require.NoError(t, err, "secret should exist")
-	require.Equal(t, c.SecretType, secret.Type, "resulting secret's type")
-	require.True(t, len(secret.Data["ca.crt"]) > 0, "resulting secret should have ca.crt entry")
-	require.Equal(t, c.ExpectHostname, string(secret.Data["hostname"]), "resulting secret's hostname entry")
-	usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, c.ExpectHostname)
+	// Verify password matches
 	err = bcrypt.CompareHashAndPassword([]byte(account.Spec.Password), []byte(pw))
 	require.NoError(t, err, "bcrypted password should match - CR/Secret sync issue?")
-	require.Equal(t, accKey.Name, usr, "username")
 	t.Logf("secret %s's password matches the one in account %s", secret.Name, accKey.Name)
 
 	// Ensure that rotation does not happen when nothing changes

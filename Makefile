@@ -33,9 +33,11 @@ e2e-tests:
 
 containerized-%: test-image
 	$(eval DOCKER ?= $(if $(shell docker -v),docker,podman))
+	$(eval DOPTS := $(if $(wildcard $(HOME)/.minikube),-v $(HOME)/.minikube:$(HOME)/.minikube,))
 	$(DOCKER) run --rm --net host \
 		-v "`pwd`:/go/src/$(PKG)" \
 		--mount "type=bind,src=$$KUBECONFIG,dst=/root/.kube/config" \
+		$(DOPTS) \
 		--entrypoint /bin/sh $(TEST_IMAGE) -c "make $*"
 
 test-image:
@@ -74,4 +76,7 @@ download-deps:
 	go mod download
 
 clean:
-	rm -rf build/_output
+	rm -rf build/_output .kubeconfig
+
+start-minikube:
+	minikube start --kubernetes-version=1.18.3 --network-plugin=cni --enable-default-cni --container-runtime=cri-o --bootstrapper=kubeadm

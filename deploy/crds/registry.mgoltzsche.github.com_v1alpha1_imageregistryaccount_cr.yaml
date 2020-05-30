@@ -3,5 +3,8 @@ kind: ImageRegistryAccount
 metadata:
   name: example-imageregistryaccount
 spec:
-  passwords: $12$asdfasdf
-    
+  password: $2y$05$vHI2zV6k6jhjZeta5r4AreLPVqjoEKMc9OZl7MvJPmE1/QqHS3Lki # pw123
+  ttl: "12h"
+  labels:
+    my-label-to-match-docker-auth-acl:
+    - my-value

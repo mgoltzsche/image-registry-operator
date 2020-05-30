@@ -50,6 +50,8 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 				},
 			},*/
 			PersistentVolumeClaim: operator.PersistentVolumeClaimSpec{
+				// DeleteClaim=false required initially to avoid https://github.com/kubernetes/minikube/issues/7218
+				DeleteClaim: false,
 				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 				Resources: corev1.ResourceRequirements{
 					Requests: map[corev1.ResourceName]resource.Quantity{
@@ -72,38 +74,9 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 	})*/
 
 	// Wait for ImageRegistry to become synced (fail fast)
-	err = WaitForCondition(t, cr, cr.GetName(), namespace, 20*time.Second, func() (c []string) {
-		if cr.Status.ObservedGeneration != cr.Generation {
-			c = append(c, fmt.Sprintf("$.status.observedGeneration == %d (was %v)", cr.Generation, cr.Status.ObservedGeneration))
-		}
-		if !cr.Status.Conditions.IsTrueFor("Synced") {
-			status := "Synced"
-			cond := cr.Status.Conditions.GetCondition("Synced")
-			if cond != nil && cond.Message != "" {
-				status = fmt.Sprintf("Synced{%s}", cond.Message)
-			}
-			c = append(c, status)
-		} else {
-			expectedHostname := fmt.Sprintf("%s.%s.svc.cluster.local", cr.Name, namespace)
-			require.Equal(t, expectedHostname, cr.Status.Hostname, "$.status.hostname")
-		}
-		return
-	})
-	require.NoError(t, err, "wait for ImageRegistry %s to become synced", cr.Name)
-
+	waitForRegistrySynced(t, cr)
 	// Wait for ImageRegistry to become ready
-	err = WaitForCondition(t, cr, cr.Name, namespace, 90*time.Second, func() (c []string) {
-		if !cr.Status.Conditions.IsTrueFor("Ready") {
-			status := "Ready"
-			cond := cr.Status.Conditions.GetCondition("Ready")
-			if cond != nil && cond.Message != "" {
-				status = fmt.Sprintf("Ready{%s}", cond.Message)
-			}
-			c = append(c, status)
-		}
-		return
-	})
-	require.NoError(t, err, "wait for ImageRegistry %s to become ready", cr.Name)
+	waitForRegistryReady(t, cr)
 
 	// Ensure the StatefulSet has been created and is ready
 	statefulSet := &appsv1.StatefulSet{}
@@ -119,7 +92,50 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 		s.ReadyReplicas == replicas &&
 		s.UpdatedReplicas == replicas
 	require.True(t, ready, "StatefulSet %s should be ready after ImageRegistry has become ready", cr.Name)
+
+	t.Logf("Updating registry pvc...")
+	cr.Spec.PersistentVolumeClaim.DeleteClaim = true
+	err = f.Client.Update(context.TODO(), cr)
+	require.NoError(t, err, "update ImageRegistry")
+	waitForRegistrySynced(t, cr)
+	waitForRegistryReady(t, cr)
 	return
+}
+
+func waitForRegistrySynced(t *testing.T, cr *operator.ImageRegistry) {
+	err := WaitForCondition(t, cr, cr.Name, cr.Namespace, 20*time.Second, func() (c []string) {
+		if cr.Status.ObservedGeneration != cr.Generation {
+			c = append(c, fmt.Sprintf("$.status.observedGeneration == %d (was %v)", cr.Generation, cr.Status.ObservedGeneration))
+		}
+		if !cr.Status.Conditions.IsTrueFor("Synced") {
+			status := "Synced"
+			cond := cr.Status.Conditions.GetCondition("Synced")
+			if cond != nil && cond.Message != "" {
+				status = fmt.Sprintf("Synced{%s}", cond.Message)
+			}
+			c = append(c, status)
+		} else {
+			expectedHostname := fmt.Sprintf("%s.%s.svc.cluster.local", cr.Name, cr.Namespace)
+			require.Equal(t, expectedHostname, cr.Status.Hostname, "$.status.hostname")
+		}
+		return
+	})
+	require.NoError(t, err, "wait for ImageRegistry %s to become synced", cr.Name)
+}
+
+func waitForRegistryReady(t *testing.T, cr *operator.ImageRegistry) {
+	err := WaitForCondition(t, cr, cr.Name, cr.Namespace, 90*time.Second, func() (c []string) {
+		if !cr.Status.Conditions.IsTrueFor("Ready") {
+			status := "Ready"
+			cond := cr.Status.Conditions.GetCondition("Ready")
+			if cond != nil && cond.Message != "" {
+				status = fmt.Sprintf("Ready{%s}", cond.Message)
+			}
+			c = append(c, status)
+		}
+		return
+	})
+	require.NoError(t, err, "wait for ImageRegistry %s to become ready", cr.Name)
 }
 
 func waitForCertReady(t *testing.T, namespace, certName, expectedSecretName string, expectedIssuer *operator.CertIssuerRefSpec) {
