@@ -1,0 +1,9 @@
+bases:
+- ../cluster-wide
+# Configures DNS and the CA root certificate on the nodes
+- github.com/mgoltzsche/nodehack/deploy
+
+patchesStrategicMerge:
+- registry-nodehack-daemonset-patch.yaml
+
+namespace: image-registry-operator

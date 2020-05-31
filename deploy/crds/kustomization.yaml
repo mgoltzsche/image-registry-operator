@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- registry.mgoltzsche.github.com_imageregistries_crd.yaml
+- registry.mgoltzsche.github.com_imageregistryaccounts_crd.yaml
+- registry.mgoltzsche.github.com_imagepushsecrets_crd.yaml
+- registry.mgoltzsche.github.com_imagepullsecrets_crd.yaml

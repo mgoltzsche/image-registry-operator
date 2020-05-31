@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: image-registry-operator
+spec:
+  template:
+    spec:
+      containers:
+        - name: operator
+          env:
+            - name: OPERATOR_DNS_ZONE
+              value: "svc.example.org"

@@ -61,13 +61,16 @@ operatorsdk-tests-local:
 
 operatorsdk-tests:
 	kubectl create namespace $(TEST_NAMESPACE)
-	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE); \
+	for M in service_account role role_binding operator; do \
+		echo '---'; cat deploy/operator/$${M}.yaml; \
+	done >/tmp/registryoperator-manifest-e2e.yaml
+	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --namespaced-manifest /tmp/registryoperator-manifest-e2e.yaml; \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE); \
 	exit $$STATUS
 
 kubectl-tests:
-	./test/cluster-scoped-test.sh
+	./test/cluster-wide-test.sh
 
 install-tools: download-deps
 	cat tools.go | grep -E '^\s*_' | cut -d'"' -f2 | xargs -n1 go install
@@ -80,3 +83,6 @@ clean:
 
 start-minikube:
 	minikube start --kubernetes-version=1.18.3 --network-plugin=cni --enable-default-cni --container-runtime=cri-o --bootstrapper=kubeadm
+
+delete-minikube:
+	minikube delete

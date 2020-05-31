@@ -27,28 +27,34 @@ reflecting its current status and the cause in case of an error.
 # Kubernetes cluster requirements
 
 * LoadBalancer support
-* CoreDNS' static IP (`10.96.0.10`) must be configured as first nameserver on every node (avoid DNS loops!) to resolve registry on nodes.
-* optional (for public access): CoreDNS should be configured with the `k8s_external` plugin exposing LoadBalancer Services under your public DNS zone (`OPERATOR_DNS_ZONE`).
-* optional: [cert-manager](https://cert-manager.io/) should be installed.
+* Registry host names must resolve on the nodes - see DNS section below.
+* optional: [cert-manager](https://cert-manager.io/) should be installed if a self-signed TLS certificate is not sufficient.
 
 
 # DNS
 
 An `ImageRegistry`'s hostname looks as follows: `<NAME>.<NAMESPACE>.<OPERATOR_DNS_ZONE>`.  
 
-Name resolution inside your k8s cluster and on its nodes can be done using the `k8s_external` CoreDNS plugin (see `./deploy/coredns-configmap.yaml`)
-For DNS resolution outside your cluster (if needed) [external-dns](https://github.com/kubernetes-sigs/external-dns)
-could be configured.
+The `OPERATOR_DNS_ZONE` is an environment variable that can be specified on the operator and defaults to `svc.cluster.local`.  
+
+Registry name resolution inside your k8s cluster and on its nodes can be done using CoreDNS:
+CoreDNS' static IP (`10.96.0.10`) should be configured as first nameserver on every node (avoid DNS loops!).
+_For development purposes this can be done using [nodehack](https://github.com/mgoltzsche/nodehack) as `./deploy/minikube` shows._  
+
+For DNS propagation outside your cluster [external-dns](https://github.com/kubernetes-sigs/external-dns) can be used - registry `Service` resources are already annotated correspondingly by the operator.
+Additionally CoreDNS' [k8s_external](https://coredns.io/plugins/k8s_external/) plugin can be used to resolve public (registry) names inside the cluster (see `./deploy/coredns-public-zone`) making it independent from external DNS configuration.  
 
 
 # TLS
 
-By default, if neither an issuer nor a secret name are specified, the operator maintains self-signed certificates for an `ImageRegistry`'s TLS and token CA.
-However an `ImageRegistry` can optionally refer to an existing secret or a [cert-manager](https://cert-manager.io/)
-`Issuer` which the operator will then use to create a `Certificate`.
+The operator maintains a self-signed CA certificate secret `image-registry-root-ca` in its own namespace.  
+
+By default, if neither an issuer nor a secret name are specified, the operator uses it to sign the generated TLS certificate for an `ImageRegistry`.
+Alternatively an `ImageRegistry` can refer to an existing secret or a [cert-manager](https://cert-manager.io/)
+`Issuer` which the operator will then use to create a `Certificate`.  
 
 _Please note that, in case of a self-signed registry TLS CA, the CA certificate must be registered with the container runtime._
-_For development purposes [nodehack](https://github.com/mgoltzsche/nodehack) can help with that._
+_For development purposes this can be done using [nodehack](https://github.com/mgoltzsche/nodehack) as `./deploy/minikube` shows._
 
 
 # Authorization
@@ -56,32 +62,40 @@ _For development purposes [nodehack](https://github.com/mgoltzsche/nodehack) can
 Authorization can be specified per `ImageRegistry` using [docker_auth's ACL](https://github.com/cesanta/docker_auth/blob/master/docs/Labels.md).
 
 
-# Installation
+# Operator installation
 
-Here is how to install the operator.
+There are multiple operator deployment variants.
+In all variants listed here the `OPERATOR_DNS_ZONE` env var defaults to `svc.cluster.local`.
 
-## Generic installation
+## Install for single namespace
 
-Install the operator namespace-scoped in the default namespace with its `OPERATOR_DNS_ZONE` env var defaulting to `svc.cluster.local`:
+Install the operator namespace-scoped in the default namespace:
 ```
-kubectl apply -k ./deploy
+kubectl apply -k github.com/mgoltzsche/image-registry-operator/deploy/operator
+```
+
+## Install cluster-wide
+
+Install the operator in the `image-registry-operator` namespace letting it watch all namespaces:
+```
+kubectl apply -k github.com/mgoltzsche/image-registry-operator/deploy/cluster-wide
 ```
 
 ## Install on Minikube
 
-Create a Minikube cluster using CRI-O:
+Create a Minikube (1.11) cluster using CRI-O:
 ```
-make start-minikube
+minikube start --kubernetes-version=1.18.3 --network-plugin=cni --enable-default-cni --container-runtime=cri-o --bootstrapper=kubeadm
 ```
 
-Install the operator cluster-wide with [nodehack](https://github.com/mgoltzsche/nodehack):
+Install the operator cluster-wide with [nodehack](https://github.com/mgoltzsche/nodehack) in the `image-registry-operator` namespace:
 ```
-kubectl apply -k ./deploy-overlays/self-signed
+kubectl apply -k github.com/mgoltzsche/image-registry-operator/deploy/minikube
 ```
 
 # Usage examples
 
-Create an `ImageRegistry`:
+Create an `ImageRegistry` (a self-signed TLS certificate is used if no secret or issuer is provided):
 ```
 kubectl apply -f - <<-EOF
 	apiVersion: registry.mgoltzsche.github.com/v1alpha1
@@ -91,7 +105,7 @@ kubectl apply -f - <<-EOF
 	spec:
 	  replicas: 1
 	  tls: {}
-	  # In production you may want to specify the TLS certificate
+	  # You may want to specify the TLS certificate
 	  # by either providing a secret or referring to a cert-manager issuer:
 	  #  secretName: my-registry-tls
 	  #  issuerRef:
@@ -135,7 +149,10 @@ kubectl apply -f - <<-EOF
 EOF
 ```
 
-_Also see `./examples` directory._
+Configure your local host to use the previously created `ImagePushSecret`'s Docker config:
+```
+kubectl get secret imagepushsecret-example -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
+```
 
 
 # How to build
@@ -146,21 +163,38 @@ make operator docker_auth nginx
 
 
 # How to test
-Run unit tests:
+
+## Unit tests
 ```
 make unit-tests
 ```
-Run e2e tests:
+
+## e2e tests
+
+### Start Minikube
 ```
 make start-minikube
-export KUBECONFIG=$(pwd)/.kube/config
-make e2e-tests
 ```
 
+### Test local changes
+Test the locally built operator binary without building/pushing it as new container image:
+```
+export KUBECONFIG=$HOME/.kube/config
+make containerized-operatorsdk-tests-local
+```
+
+### Test rollout with cert-manager
+```
+export KUBECONFIG=$HOME/.kube/config
+kubectl apply --validate=false -f https://github.com/jetstack/cert-manager/releases/download/v0.15.1/cert-manager.yaml
+kubectl rollout status -w --timeout 120s -n cert-manager deploy cert-manager-webhook
+kubectl wait --for condition=established --timeout 20s crd issuers.cert-manager.io
+make containerized-kubectl-tests
+```
 
 # Development notes
 
-The operator skeleton has been generated using the [operator-sdk](https://github.com/operator-framework):
+The operator skeleton has been generated using the [operator-sdk](https://github.com/operator-framework/operator-sdk):
 * The `deploy` directory contains the corresponding kubernetes manifests.
 * The `deploy/crds` directory is generated from `pkg/apis/registry/*/*_types.go`.
 * The `pkg/controller/*` directories contain the code that handles the corresponding CRD.

@@ -21,7 +21,8 @@ func TestCertGen(t *testing.T) {
 	startTime := time.Now()
 	ca, err := NewSelfSignedCAKeyPair("registry.operator.fake.root")
 	require.NoError(t, err, "NewSelfSignedCA")
-	require.False(t, ca.NeedsRenewal(), "CA needs renewal")
+	require.True(t, startTime.Add(7*time.Second).Before(ca.x509Cert.NotAfter) && startTime.Add(ttl).Add(1*time.Second).After(ca.x509Cert.NotAfter), "ca.notAfter")
+	require.False(t, ca.NeedsRenewal(), "CA needs renewal after "+startTime.Sub(time.Now()).String())
 	parsed, err := X509KeyPair(ca.KeyPEM(), ca.CertPEM(), ca.CACertPEM())
 	require.NoError(t, err, "X509KeyPair(ca)")
 	require.NotNil(t, parsed, "X509KeyPair(ca)")
@@ -30,7 +31,7 @@ func TestCertGen(t *testing.T) {
 
 	cert, err := NewServerKeyPair([]string{"localhost"}, ca)
 	require.NoError(t, err, "NewServerKeyPair")
-	require.False(t, cert.NeedsRenewal(), "CA needs renewal")
+	require.False(t, cert.NeedsRenewal(), "cert needs renewal")
 	svcCert, err := tls.X509KeyPair(cert.CertPEM(), cert.KeyPEM())
 	require.NoError(t, err, "tls.X509KeyPair")
 	parsed, err = X509KeyPair(cert.KeyPEM(), cert.CertPEM(), cert.CACertPEM())
@@ -66,5 +67,5 @@ func TestCertGen(t *testing.T) {
 
 	time.Sleep(startTime.Add(ttl).Sub(time.Now()) + 3*time.Second)
 	require.True(t, ca.NeedsRenewal(), "CA needs renewal")
-	require.True(t, cert.NeedsRenewal(), "CA needs renewal")
+	require.True(t, cert.NeedsRenewal(), "cert needs renewal")
 }
