@@ -27,7 +27,7 @@ reflecting its current status and the cause in case of an error.
 # Kubernetes cluster requirements
 
 * LoadBalancer support
-* Registry host names must resolve on the nodes - see DNS section below.
+* LoadBalancer `Service` names must resolve on the nodes - see DNS section below.
 * optional: [cert-manager](https://cert-manager.io/) should be installed if a self-signed TLS certificate is not sufficient.
 
 
@@ -71,6 +71,7 @@ In all variants listed here the `OPERATOR_DNS_ZONE` env var defaults to `svc.clu
 
 Install the operator namespace-scoped in the default namespace:
 ```
+kubectl apply -k github.com/mgoltzsche/image-registry-operator/deploy/crds
 kubectl apply -k github.com/mgoltzsche/image-registry-operator/deploy/operator
 ```
 
