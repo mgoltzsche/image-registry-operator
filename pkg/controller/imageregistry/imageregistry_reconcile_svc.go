@@ -145,6 +145,7 @@ func (r *ReconcileImageRegistry) reconcileStatefulSet(instance *registryv1alpha1
 
 func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.ImageRegistry, statefulSet *appsv1.StatefulSet) {
 	extHostname := r.externalHostnameForCR(cr)
+	externalURL := "https://" + extHostname
 	authIssuerName := fmt.Sprintf("Docker Registry Auth %s", extHostname)
 	labels := selectorLabelsForCR(cr)
 	replicas := int32(1)
@@ -211,10 +212,11 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 						},
 						Env: []corev1.EnvVar{
 							{Name: "REGISTRY_HTTP_ADDR", Value: fmt.Sprintf(":%d", internalPortRegistry)},
+							{Name: "REGISTRY_HTTP_HOST", Value: externalURL},
 							{Name: "REGISTRY_HTTP_RELATIVEURLS", Value: "true"},
 							{Name: "REGISTRY_STORAGE_DELETE_ENABLED", Value: "true"},
 							{Name: "REGISTRY_AUTH", Value: "token"},
-							{Name: "REGISTRY_AUTH_TOKEN_REALM", Value: r.externalUrlForCR(cr) + "/auth/token"},
+							{Name: "REGISTRY_AUTH_TOKEN_REALM", Value: externalURL + "/auth/token"},
 							{Name: "REGISTRY_AUTH_TOKEN_AUTOREDIRECT", Value: "true"},
 							{Name: "REGISTRY_AUTH_TOKEN_ISSUER", Value: authIssuerName},
 							{Name: "REGISTRY_AUTH_TOKEN_SERVICE", Value: fmt.Sprintf("Docker Registry %s", extHostname)},

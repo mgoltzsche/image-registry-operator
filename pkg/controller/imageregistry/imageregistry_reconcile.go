@@ -183,10 +183,6 @@ func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, o
 	return
 }
 
-func (r *ReconcileImageRegistry) externalUrlForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return "https://" + r.externalHostnameForCR(cr)
-}
-
 func (r *ReconcileImageRegistry) externalHostnameForCR(cr *registryv1alpha1.ImageRegistry) string {
 	return fmt.Sprintf("%s.%s.%s", serviceNameForCR(cr), cr.Namespace, r.dnsZone)
 }
