@@ -1,8 +1,0 @@
-bases:
-- ../cluster-scoped
-- github.com/mgoltzsche/nodehack/deploy
-
-patchesStrategicMerge:
-- registry-nodehack-daemonset-patch.yaml
-
-namespace: image-registry-operator

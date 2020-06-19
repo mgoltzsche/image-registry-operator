@@ -1,9 +1,0 @@
-bases:
-- ../cluster-wide
-
-resources:
-# TODO: Template configmap with external zone
-- coredns-configmap.yaml
-
-patchesStrategicMerge:
-- operator-patch.yaml
