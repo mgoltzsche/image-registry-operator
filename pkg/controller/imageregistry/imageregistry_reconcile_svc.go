@@ -22,6 +22,7 @@ const (
 	internalPortAuth                  = int32(5001)
 	internalPortNginx                 = int32(8443)
 	publicPortNginx                   = int32(443)
+	publicPortName                    = "https"
 )
 
 func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
@@ -31,18 +32,29 @@ func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.Ima
 	return r.upsert(instance, svc, reqLogger, func() error {
 		externalHostname := r.externalHostnameForCR(instance)
 		svc.Annotations[annotationExternalDnsHostname] = externalHostname
-		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
-		svc.Spec.Ports = []corev1.ServicePort{
-			{
-				Name:       "https",
-				Port:       publicPortNginx,
-				TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: internalPortNginx},
-				Protocol:   corev1.ProtocolTCP,
-			},
-		}
 		svc.Spec.Selector = selectorLabelsForCR(instance)
+		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
+		if !hasPort(svc.Spec.Ports, publicPortName, publicPortNginx, internalPortNginx) {
+			svc.Spec.Ports = []corev1.ServicePort{
+				{
+					Name:       publicPortName,
+					Port:       publicPortNginx,
+					TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: internalPortNginx},
+					Protocol:   corev1.ProtocolTCP,
+				},
+			}
+		}
 		return nil
 	})
+}
+
+func hasPort(ports []corev1.ServicePort, name string, port, targetPort int32) bool {
+	for _, p := range ports {
+		if p.Name == name && p.Port == port && p.TargetPort.IntVal == targetPort {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ReconcileImageRegistry) reconcilePersistentVolumeClaim(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {
