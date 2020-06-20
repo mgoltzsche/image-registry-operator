@@ -17,8 +17,10 @@ This operator supports the following CRDs:
 By default managed push and pull secrets are rotated every 24h.  
 
 Both push and pull secrets contain additional keys:
-* `hostname` - the registry's hostname _(to be used to define registry agnostic builds)_
+* `registry` - the registry's hostname _(to be used to define registry agnostic builds)_
 * `ca.crt` - the registry's CA certificate _(to support test installations using a self-signed CA)_
+* `username` - the registry's username
+* `password` - the registry's password
 
 A `Ready` condition is maintained by the operator for `ImageRegistry`, `ImagePushSecret` and `ImagePullSecret` resources
 reflecting its current status and the cause in case of an error.
@@ -154,6 +156,14 @@ Configure your local host to use the previously created `ImagePushSecret`'s Dock
 ```
 kubectl get secret imagepushsecret-example -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
 ```
+To use a self-signed registry cert (for development) configure `/etc/docker/daemon.json` with:
+```
+{
+  "insecure-registries" : ["registry.default.svc.cluster.local"]
+}
+
+```
+When running the registry in minikube you need to map the `registry` Service's IP on your host.
 
 
 # How to build
@@ -193,7 +203,12 @@ kubectl wait --for condition=established --timeout 20s crd issuers.cert-manager.
 make containerized-kubectl-tests
 ```
 
-# Development notes
+# Development & contributions
+
+Contributions are welcome.
+Changes and large features should be discussed in an issue first though.
+
+## Source structure & generation
 
 The operator skeleton has been generated using the [operator-sdk](https://github.com/operator-framework/operator-sdk):
 * The `deploy` directory contains the corresponding kubernetes manifests.
@@ -203,4 +218,12 @@ The operator skeleton has been generated using the [operator-sdk](https://github
 The CRDs in `deploy/crd` and `zz_*.go` files need to be regenerated as follows when an API type changes:
 ```
 make generate
+```
+
+## Test local operator changes interactively
+
+1) Follow the instructions above to install the operator on minikube and run the examples
+2) Run the operator using [skaffold](https://skaffold.dev/) (instantly redeploys on source changes):
+```
+skaffold dev
 ```

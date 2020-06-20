@@ -113,7 +113,7 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 		require.NoError(t, e, "secret lookup when CR ready")
 		require.Equal(t, c.SecretType, secret.Type, "resulting secret's type")
 		require.True(t, len(secret.Data["ca.crt"]) > 0, "resulting secret should have ca.crt entry")
-		require.Equal(t, c.ExpectHostname, string(secret.Data["hostname"]), "resulting secret's hostname entry")
+		require.Equal(t, c.ExpectHostname, string(secret.Data["registry"]), "resulting secret's registry entry")
 		usr, pw = dockercfgSecretPassword(t, secret, c.DockerConfigKey, c.ExpectHostname)
 		if accKey.Name != usr {
 			pending = append(pending, fmt.Sprintf("secretloginname{%s -> %d}", usr, status.Rotation))
@@ -146,7 +146,7 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 	secret.Annotations["someannotation"] = "someval"
 	err = framework.Global.Client.Update(context.TODO(), secret)
 	require.NoError(t, err, "secret update without changes")
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 	key := types.NamespacedName{Name: secretCR.GetName(), Namespace: secretCR.GetNamespace()}
 	err = framework.Global.Client.Get(context.TODO(), key, secretCR)
 	require.NoError(t, err, "secret CR should exist")

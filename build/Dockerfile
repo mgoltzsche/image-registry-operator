@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.14-alpine3.11 AS builddeps
+FROM docker.io/library/golang:1.14-alpine3.12 AS builddeps
 RUN apk add --update --no-cache curl make gcc libc-dev
 COPY go.mod go.sum tools.go /go/src/github.com/mgoltzsche/image-registry-operator/
 WORKDIR /go/src/github.com/mgoltzsche/image-registry-operator
@@ -12,7 +12,7 @@ COPY cmd /go/src/github.com/mgoltzsche/image-registry-operator/cmd
 RUN go build -ldflags '-s -w -extldflags "-static"' ./cmd/manager && mv manager /bin/
 
 # Prepare operator image
-FROM alpine:3.11 AS operator
+FROM alpine:3.12 AS operator
 COPY build/bin /usr/local/bin
 ENV OPERATOR=/usr/local/bin/image-registry-operator \
     USER_UID=1001 \

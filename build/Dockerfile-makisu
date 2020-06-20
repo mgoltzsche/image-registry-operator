@@ -1,0 +1,32 @@
+FROM gcr.io/uber-container-tools/makisu:latest AS makisu
+
+FROM alpine:3.12 AS makisu-wrapper
+COPY --from=makisu /makisu-internal /makisu-internal
+
+## Doesn't work as unprivileged user:
+#RUN addgroup -g 7000 makisu
+#RUN adduser -u 7000 -G makisu -S -h /makisu-storage makisu
+#USER makisu:makisu
+#ENV HOME=/makisu-storage
+#WORKDIR /makisu-storage
+
+COPY build/bin/makisu-wrapper /makisu-internal/
+RUN mkdir /makisu-internal/registry-certs
+ENTRYPOINT ["/makisu-internal/makisu-wrapper"]
+
+FROM makisu-wrapper
+RUN set -ex; \
+	mkdir /tmp/test; \
+	cd /tmp/test; \
+	mkdir /makisu-internal/config; \
+	echo 'myregistry' > /makisu-internal/config/hostname; \
+	echo 'FROM alpine:3.12' > Dockerfile; \
+	echo 'RUN echo asdf > /file; cat /file' >> Dockerfile; \
+	/makisu-internal/makisu-wrapper build \
+		--log-fmt=console \
+		--registry-config='$REGISTRY_CONFIG' \
+		--modifyfs=true \
+		-t='$REGISTRY/example:latest' \
+		.
+
+FROM makisu-wrapper

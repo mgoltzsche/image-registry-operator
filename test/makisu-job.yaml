@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: makisu-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+      # here a git repo could be cloned
+      - name: provisioner
+        image: alpine:3.12
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+            set -ex;
+            echo $'#!/bin/sh\ntimeout 1 cat - >/dev/null; echo -e "HTTP/1.1 200 OK\n\nhello world!"' > /makisu-context/handler;
+            chmod +x /makisu-context/handler;
+            echo 'FROM alpine:3.12' > /makisu-context/Dockerfile;
+            echo 'COPY handler /handler' >> /makisu-context/Dockerfile;
+            echo 'ENTRYPOINT ["/usr/bin/nc", "-lk", "-p", "8080", "-e", "/handler"]' >> /makisu-context/Dockerfile;
+        volumeMounts:
+        - name: context
+          mountPath: /makisu-context
+      containers:
+      - name: makisu
+        image: mgoltzsche/image-registry-operator:makisu
+        imagePullPolicy: Always
+        args:
+         - build
+         - --log-fmt=console
+         - --registry-config=$REGISTRY_CONFIG
+         - --push=$REGISTRY
+         - --modifyfs=true
+         - -t=test/example-github:latest
+         - /makisu-context
+        volumeMounts:
+        - name: context
+          mountPath: /makisu-context
+        - name: storage
+          mountPath: /makisu-storage
+        - name: registry-config
+          mountPath: /makisu-internal/config
+        #- name: registry-config
+        #  subPath: ca.crt
+        #  mountPath: /etc/ssl/certs/ca.crt
+      volumes:
+      - name: context
+        emptyDir: {}
+      - name: storage
+        emptyDir: {}
+      - name: registry-config
+        secret:
+          secretName: imagepushsecret-example

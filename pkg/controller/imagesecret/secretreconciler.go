@@ -34,7 +34,6 @@ const (
 	EnvDefaultRegistryNamespace = "OPERATOR_DEFAULT_REGISTRY_NAMESPACE"
 	EnvSecretTTL                = "OPERATOR_SECRET_TTL"
 	AnnotationSecretRotation    = "registry.mgoltzsche.github.com/rotation"
-	secretCaCertKey             = "ca.crt"
 	defaultAccountTTL           = 24 * time.Hour
 )
 
@@ -160,7 +159,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	// Update ImageRegistryAccount & Secret
-	hostnameCaChanged := string(secret.Data["hostname"]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
+	hostnameCaChanged := string(secret.Data[registryapi.SecretKeyRegistry]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
 	needsRenewal := time.Now().Sub(account.CreationTimestamp.Time) > r.rotationInterval
 	secretOutOfSync := secret.Annotations == nil || secret.Annotations[AnnotationSecretRotation] != strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	if !accountExists || !secretExists || secretOutOfSync || needsRenewal || hostnameCaChanged {
@@ -243,10 +242,10 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 	secret.Type = r.cfg.SecretType
 	secret.Annotations[AnnotationSecretRotation] = strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	secret.Data = map[string][]byte{}
-	secret.Data["username"] = []byte(account.Name)
-	secret.Data["password"] = newPassword
-	secret.Data["hostname"] = []byte(registry.Hostname)
-	secret.Data["ca.crt"] = registry.CA
+	secret.Data[registryapi.SecretKeyUsername] = []byte(account.Name)
+	secret.Data[registryapi.SecretKeyPassword] = newPassword
+	secret.Data[registryapi.SecretKeyRegistry] = []byte(registry.Hostname)
+	secret.Data[registryapi.SecretKeyCaCert] = registry.CA
 	secret.Data[r.cfg.DockerConfigKey] = generateDockerConfigJson(registry.Hostname, account.Name, string(newPassword))
 	if err = controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
 		return
@@ -297,7 +296,7 @@ func (r *ReconcileImageSecret) getRegistry(registryKey types.NamespacedName) (re
 	return &targetRegistry{
 		Namespace: registryCR.GetNamespace(),
 		Hostname:  registryCR.Status.Hostname,
-		CA:        secret.Data[secretCaCertKey],
+		CA:        secret.Data[registryapi.SecretKeyCaCert],
 	}, nil
 }
 

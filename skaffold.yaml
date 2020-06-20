@@ -1,37 +1,17 @@
+# Operator development deployment.
+# Assumes that the last released operator is deployed initially and that
+# it started the registry registry.default.svc.cluster.local
 apiVersion: skaffold/v1
 kind: Config
 metadata:
   name: image-registry-operator
 build:
   artifacts:
-  - image: registry.example.org/image-registry-operator
+  - image: registry.default.svc.cluster.local/image-registry-operator
     context: .
     docker:
       dockerfile: build/Dockerfile
-  - image: registry.example.org/authservice
-    context: .
-    docker:
-      dockerfile: build/Dockerfile
-      target: authservice
+      target: operator
 deploy:
   kustomize:
-    path: deploy
-profiles:
-- name: oncluster
-  build:
-    artifacts:
-    - image: registry.example.org/image-registry-operator
-      context: .
-#      kaniko:
-#        buildContext:
-          #gcsBucket: skaffold-kaniko
-#          localDir: {}
-    - image: registry.example.org/authservice
-      context: .
-    tagPolicy:
-      gitCommit: {}
-    cluster:
-      namespace: build
-      pullSecretName: registry-deployment-push-credentials
-      dockerConfig:
-        secretName: registry-deployment-push-credentials
+    path: deploy/dev

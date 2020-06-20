@@ -1,0 +1,12 @@
+bases:
+- ../operator
+- ../nodehack
+
+patchesStrategicMerge:
+- operator-patch.yaml
+
+images:
+- name: mgoltzsche/image-registry-operator
+  newName: registry.default.svc.cluster.local/image-registry-operator
+
+namespace: image-registry-operator

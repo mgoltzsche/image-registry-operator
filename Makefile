@@ -14,7 +14,7 @@ endef
 export TESTDOCKERFILE
 
 
-all: operator docker_auth nginx
+all: operator docker_auth nginx makisu
 
 operator:
 	docker build --force-rm -t image-registry-operator -f build/Dockerfile --target operator .
@@ -24,6 +24,9 @@ docker_auth:
 
 nginx:
 	docker build --force-rm -t registry-nginx -f build/Dockerfile-nginx .
+
+makisu:
+	docker build --force-rm -t makisu -f build/Dockerfile-makisu .
 
 unit-tests:
 	docker build --force-rm -f build/Dockerfile .

@@ -7,8 +7,12 @@ import (
 )
 
 const (
-	TypePull ImageSecretType = "pull"
-	TypePush ImageSecretType = "push"
+	TypePull          ImageSecretType = "pull"
+	TypePush          ImageSecretType = "push"
+	SecretKeyCaCert                   = "ca.crt"
+	SecretKeyRegistry                 = "registry"
+	SecretKeyUsername                 = "username"
+	SecretKeyPassword                 = "password"
 )
 
 type ImageSecretType string
