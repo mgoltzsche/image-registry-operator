@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-logr/logr"
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/merge"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,27 +35,9 @@ func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.Ima
 		svc.Annotations[annotationExternalDnsHostname] = externalHostname
 		svc.Spec.Selector = selectorLabelsForCR(instance)
 		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
-		if !hasPort(svc.Spec.Ports, publicPortName, publicPortNginx, internalPortNginx) {
-			svc.Spec.Ports = []corev1.ServicePort{
-				{
-					Name:       publicPortName,
-					Port:       publicPortNginx,
-					TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: internalPortNginx},
-					Protocol:   corev1.ProtocolTCP,
-				},
-			}
-		}
+		merge.AddPort(svc, publicPortName, publicPortNginx, internalPortNginx, corev1.ProtocolTCP)
 		return nil
 	})
-}
-
-func hasPort(ports []corev1.ServicePort, name string, port, targetPort int32) bool {
-	for _, p := range ports {
-		if p.Name == name && p.Port == port && p.TargetPort.IntVal == targetPort {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *ReconcileImageRegistry) reconcilePersistentVolumeClaim(instance *registryv1alpha1.ImageRegistry, reqLogger logr.Logger) (err error) {

@@ -5,13 +5,11 @@ import (
 
 	"github.com/mgoltzsche/image-registry-operator/pkg/certs"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -47,7 +45,7 @@ func Add(mgr manager.Manager) error {
 	}
 
 	// Watch secrets to trigger the reconcile requests
-	return c.Watch(&source.Kind{Type: &corev1.Secret{}}, &enqueueRequestForName{certs.RootCASecretName()})
+	return c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: secretNameFilter{certs.RootCASecretName()}})
 }
 
 type ReconcileCARootSecret struct {
@@ -79,33 +77,14 @@ func (r *ReconcileCARootSecret) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{RequeueAfter: cert.NextRenewal().Sub(time.Now()) + 30*time.Second}, nil
 }
 
-type enqueueRequestForName struct {
+type secretNameFilter struct {
 	name types.NamespacedName
 }
 
-func (e *enqueueRequestForName) queue(meta metav1.Object, q workqueue.RateLimitingInterface) {
-	if meta == nil || meta.GetName() != e.name.Name || meta.GetNamespace() != e.name.Namespace {
+func (e secretNameFilter) Map(o handler.MapObject) (r []reconcile.Request) {
+	m := o.Meta
+	if m == nil || m.GetName() != e.name.Name || m.GetNamespace() != e.name.Namespace {
 		return
 	}
-	q.Add(reconcile.Request{NamespacedName: e.name})
-}
-
-// Create implements EventHandler
-func (e *enqueueRequestForName) Create(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
-	e.queue(evt.Meta, q)
-}
-
-// Update implements EventHandler
-func (e *enqueueRequestForName) Update(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
-	e.queue(evt.MetaNew, q)
-}
-
-// Delete implements EventHandler
-func (e *enqueueRequestForName) Delete(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
-	e.queue(evt.Meta, q)
-}
-
-// Generic implements EventHandler
-func (e *enqueueRequestForName) Generic(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
-	e.queue(evt.Meta, q)
+	return []reconcile.Request{{NamespacedName: e.name}}
 }

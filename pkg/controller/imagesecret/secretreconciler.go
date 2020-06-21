@@ -10,6 +10,8 @@ import (
 	"github.com/go-logr/logr"
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imageregistry"
+	"github.com/mgoltzsche/image-registry-operator/pkg/passwordgen"
+	"github.com/mgoltzsche/image-registry-operator/pkg/registriesconf"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	corev1 "k8s.io/api/core/v1"
@@ -204,8 +206,8 @@ func (r *ReconcileImageSecret) get(ctx context.Context, obj runtime.Object) (boo
 }
 
 func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretInterface, registry *targetRegistry, secret *corev1.Secret, reqLogger logr.Logger) (err error) {
-	newPassword := generatePassword()
-	newPasswordHash, err := bcryptPassword(newPassword)
+	newPassword := passwordgen.GeneratePassword()
+	newPasswordHash, err := passwordgen.BcryptPassword(newPassword)
 	if err != nil {
 		return
 	}
@@ -239,6 +241,9 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 	if secret.Annotations == nil {
 		secret.Annotations = map[string]string{}
 	}
+	dockerConfig := (&registriesconf.DockerConfig{}).
+		AddAuth(registry.Hostname, account.Name, string(newPassword)).
+		JSON()
 	secret.Type = r.cfg.SecretType
 	secret.Annotations[AnnotationSecretRotation] = strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	secret.Data = map[string][]byte{}
@@ -246,7 +251,7 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 	secret.Data[registryapi.SecretKeyPassword] = newPassword
 	secret.Data[registryapi.SecretKeyRegistry] = []byte(registry.Hostname)
 	secret.Data[registryapi.SecretKeyCaCert] = registry.CA
-	secret.Data[r.cfg.DockerConfigKey] = generateDockerConfigJson(registry.Hostname, account.Name, string(newPassword))
+	secret.Data[r.cfg.DockerConfigKey] = dockerConfig
 	if err = controllerutil.SetControllerReference(instance, secret, r.scheme); err != nil {
 		return
 	}

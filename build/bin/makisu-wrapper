@@ -3,9 +3,10 @@
 CONFIGDIR=${CONFIGDIR:-/makisu-internal/config}
 export REGISTRY="${REGISTRY_HOST:-$(cat $CONFIGDIR/registry 2>/dev/null)}"
 export REGISTRY_CONFIG=/makisu-internal/makisu.yaml
+export REDIS="$(cat $CONFIGDIR/redis 2>/dev/null)"
+export REDIS_PASSWORD="$(cat $CONFIGDIR/redis_password 2>/dev/null)"
 
-CERTDIR=/makisu-internal/registry-certs
-[ ! -f "$CONFIGDIR/ca.crt" ] || ln -s "$CONFIGDIR/ca.crt" $CERTDIR/ca.crt
+[ ! -f "$CONFIGDIR/ca.crt" ] || ln -s "$CONFIGDIR/ca.crt" /makisu-internal/certs/ca.crt
 
 (
 	{

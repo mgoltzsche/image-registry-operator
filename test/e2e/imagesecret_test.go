@@ -87,7 +87,7 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 	secretKey := types.NamespacedName{Name: c.SecretName(), Namespace: ns}
 	account = &operator.ImageRegistryAccount{}
 	accKey := types.NamespacedName{Namespace: c.CR.GetNamespace()}
-	err := WaitForCondition(t, secretCR, secretCR.GetName(), ns, 10*time.Second, func() (pending []string) {
+	err := WaitForCondition(t, secretCR, 10*time.Second, func() (pending []string) {
 		if !status.Conditions.IsTrueFor("Ready") {
 			cond := status.Conditions.GetCondition("Ready")
 			if cond == nil {

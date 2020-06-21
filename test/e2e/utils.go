@@ -14,18 +14,19 @@ import (
 	dynclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func WaitForCondition(t *testing.T, obj runtime.Object, name, ns string, pollTimeout time.Duration, condition func() []string) (err error) {
-	t.Logf("waiting up to %v for %s condition...", pollTimeout, name)
+func WaitForCondition(t *testing.T, obj runtime.Object, pollTimeout time.Duration, condition func() []string) (err error) {
+	key, err := dynclient.ObjectKeyFromObject(obj)
+	if err != nil {
+		return
+	}
+	t.Logf("waiting up to %v for %s condition...", pollTimeout, key.Name)
 	err = wait.PollImmediate(time.Second, pollTimeout, func() (bool, error) {
-		key := dynclient.ObjectKey{Name: name, Namespace: ns}
-		if err = framework.Global.Client.Get(context.TODO(), key, obj); err != nil {
-			err = fmt.Errorf("%s not found: %s", key, err)
-			t.Logf(err.Error())
+		if e := framework.Global.Client.Get(context.TODO(), key, obj); e != nil {
+			t.Logf("%s not found: %s", key, e)
 			return false, nil
 		}
 		if c := condition(); len(c) > 0 {
-			err = fmt.Errorf("  %s did not meet condition: %v", key, c)
-			t.Logf(err.Error())
+			t.Logf("  %s did not meet condition: %v", key, c)
 			return false, nil
 		}
 		t.Logf("%s met condition", key)

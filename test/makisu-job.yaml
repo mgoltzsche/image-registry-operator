@@ -32,7 +32,7 @@ spec:
          - --registry-config=$REGISTRY_CONFIG
          - --push=$REGISTRY
          - --modifyfs=true
-         - -t=test/example-github:latest
+         - -t=example:latest
          - /makisu-context
         volumeMounts:
         - name: context
@@ -41,9 +41,6 @@ spec:
           mountPath: /makisu-storage
         - name: registry-config
           mountPath: /makisu-internal/config
-        #- name: registry-config
-        #  subPath: ca.crt
-        #  mountPath: /etc/ssl/certs/ca.crt
       volumes:
       - name: context
         emptyDir: {}

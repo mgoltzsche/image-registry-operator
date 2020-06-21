@@ -156,7 +156,7 @@ Configure your local host to use the previously created `ImagePushSecret`'s Dock
 ```
 kubectl get secret imagepushsecret-example -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
 ```
-To use a self-signed registry cert (for development) configure `/etc/docker/daemon.json` with:
+To use a self-signed registry cert (for development) configure `/etc/docker/daemon.json` with (docker needs to be restarted):
 ```
 {
   "insecure-registries" : ["registry.default.svc.cluster.local"]

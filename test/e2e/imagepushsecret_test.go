@@ -8,15 +8,18 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func testImagePullSecret(t *testing.T, ctx *framework.Context, registryRef *operator.ImageRegistryRef, hostname string) {
-	cr := &operator.ImagePullSecret{}
+func testImagePushSecret(t *testing.T, ctx *framework.Context, registryRef *operator.ImageRegistryRef, hostname string) (secretName string) {
+	cr := &operator.ImagePushSecret{}
 	cr.Spec.RegistryRef = registryRef
-	cr.SetName("my-pull-secret-cr")
-	testImageSecret(t, ctx, ImageSecretTestCase{
+	cr.SetName("my-push-secret-cr")
+	c := ImageSecretTestCase{
 		CR:              cr,
-		AccessMode:      operator.TypePull,
+		AccessMode:      operator.TypePush,
 		SecretType:      corev1.SecretTypeDockerConfigJson,
-		DockerConfigKey: ".dockerconfigjson",
+		DockerConfigKey: corev1.DockerConfigJsonKey,
 		ExpectHostname:  hostname,
-	})
+	}
+	testImageSecret(t, ctx, c)
+	secretName = c.SecretName()
+	return
 }

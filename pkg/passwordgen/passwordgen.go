@@ -1,4 +1,4 @@
-package imagesecret
+package passwordgen
 
 import (
 	crand "crypto/rand"
@@ -16,11 +16,11 @@ const (
 		digitChars + specialChars
 )
 
-func bcryptPassword(password []byte) (p []byte, err error) {
+func BcryptPassword(password []byte) (p []byte, err error) {
 	return bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
 }
 
-func generatePassword() []byte {
+func GeneratePassword() []byte {
 	var src cryptoSource
 	rnd := rand.New(src)
 	length := 16

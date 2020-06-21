@@ -103,7 +103,7 @@ func createImageRegistry(t *testing.T, ctx *framework.Context) (cr *operator.Ima
 }
 
 func waitForRegistrySynced(t *testing.T, cr *operator.ImageRegistry) {
-	err := WaitForCondition(t, cr, cr.Name, cr.Namespace, 20*time.Second, func() (c []string) {
+	err := WaitForCondition(t, cr, 20*time.Second, func() (c []string) {
 		if cr.Status.ObservedGeneration != cr.Generation {
 			c = append(c, fmt.Sprintf("$.status.observedGeneration == %d (was %v)", cr.Generation, cr.Status.ObservedGeneration))
 		}
@@ -124,7 +124,7 @@ func waitForRegistrySynced(t *testing.T, cr *operator.ImageRegistry) {
 }
 
 func waitForRegistryReady(t *testing.T, cr *operator.ImageRegistry) {
-	err := WaitForCondition(t, cr, cr.Name, cr.Namespace, 90*time.Second, func() (c []string) {
+	err := WaitForCondition(t, cr, 90*time.Second, func() (c []string) {
 		if !cr.Status.Conditions.IsTrueFor("Ready") {
 			status := "Ready"
 			cond := cr.Status.Conditions.GetCondition("Ready")
@@ -140,7 +140,9 @@ func waitForRegistryReady(t *testing.T, cr *operator.ImageRegistry) {
 
 func waitForCertReady(t *testing.T, namespace, certName, expectedSecretName string, expectedIssuer *operator.CertIssuerRefSpec) {
 	cert := &certmgr.Certificate{}
-	err := WaitForCondition(t, cert, certName, namespace, 15*time.Second, func() (c []string) {
+	cert.Name = certName
+	cert.Namespace = namespace
+	err := WaitForCondition(t, cert, 15*time.Second, func() (c []string) {
 		expectIssuer := fmt.Sprintf("%s/%s", expectedIssuer.Kind, expectedIssuer.Name)
 		actualIssuer := fmt.Sprintf("%s/%s", cert.Spec.IssuerRef.Kind, cert.Spec.IssuerRef.Name)
 		require.Equal(t, expectIssuer, actualIssuer, "cert %s issuer", certName)

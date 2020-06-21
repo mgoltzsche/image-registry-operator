@@ -48,7 +48,8 @@ func TestOperator(t *testing.T) {
 		})
 
 		t.Run("ImagePushSecret", func(t *testing.T) {
-			testImagePushSecret(t, ctx, registryRef, registryCR.Status.Hostname)
+			secretName := testImagePushSecret(t, ctx, registryRef, registryCR.Status.Hostname)
+			testImageBuildEnvs(t, ctx, secretName)
 		})
 	})
 }

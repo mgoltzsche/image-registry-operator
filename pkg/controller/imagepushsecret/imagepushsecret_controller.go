@@ -25,8 +25,8 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return imagesecret.NewReconciler(mgr, log, imagesecret.ReconcileImageSecretConfig{
 		CRFactory:       func() registryapi.ImageSecretInterface { return &registryapi.ImagePushSecret{} },
 		Intent:          registryapi.TypePush,
-		SecretType:      corev1.SecretTypeOpaque,
-		DockerConfigKey: "config.json",
+		SecretType:      corev1.SecretTypeDockerConfigJson,
+		DockerConfigKey: corev1.DockerConfigJsonKey,
 	})
 }
 

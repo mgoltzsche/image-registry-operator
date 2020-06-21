@@ -6,3 +6,4 @@ resources:
 - registry.mgoltzsche.github.com_imageregistryaccounts_crd.yaml
 - registry.mgoltzsche.github.com_imagepushsecrets_crd.yaml
 - registry.mgoltzsche.github.com_imagepullsecrets_crd.yaml
+- registry.mgoltzsche.github.com_imagebuildenvs_crd.yaml

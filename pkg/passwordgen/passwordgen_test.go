@@ -1,4 +1,4 @@
-package imagesecret
+package passwordgen
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestGeneratePassword(t *testing.T) {
-	pw := generatePassword()
+	pw := GeneratePassword()
 	if len(pw) != 16 {
 		t.Errorf("len != 32: %s", string(pw))
 	}
@@ -22,7 +22,7 @@ func TestGeneratePassword(t *testing.T) {
 
 func TestBcryptPassword(t *testing.T) {
 	pw := []byte(allChars + "test")
-	hashed, err := bcryptPassword(pw)
+	hashed, err := BcryptPassword(pw)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()

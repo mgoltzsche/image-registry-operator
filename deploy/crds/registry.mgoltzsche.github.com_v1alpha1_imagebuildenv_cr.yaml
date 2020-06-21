@@ -1,0 +1,9 @@
+apiVersion: registry.mgoltzsche.github.com/v1alpha1
+kind: ImageBuildEnv
+metadata:
+  name: example-imagebuildenv
+spec:
+  redis: true
+  secrets:
+  - secretName: imagepushsecret-example
+  - secretName: some-external-registry

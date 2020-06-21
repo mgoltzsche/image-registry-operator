@@ -46,8 +46,8 @@ type CertIssuerRefSpec struct {
 
 // ImageRegistryStatus defines the observed state of ImageRegistry
 type ImageRegistryStatus struct {
-	Conditions         status.Conditions `json:"conditions,omitempty"`
 	ObservedGeneration int64             `json:"observedGeneration,omitempty"`
+	Conditions         status.Conditions `json:"conditions,omitempty"`
 	Hostname           string            `json:"hostname,omitempty"`
 	TLSSecretName      string            `json:"tlsSecretName,omitempty"`
 }
