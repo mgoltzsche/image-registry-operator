@@ -34,7 +34,7 @@ const (
 // Add creates a new ImageBuildEnv Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	secretMapper := newRequestMapper()
+	secretMapper := newRequestMap()
 	r := &ReconcileImageBuildEnv{client: mgr.GetClient(), scheme: mgr.GetScheme(), secretMapper: secretMapper}
 
 	// Create a new controller
@@ -91,7 +91,7 @@ type ReconcileImageBuildEnv struct {
 	// that reads objects from the cache and writes to the apiserver
 	client       client.Client
 	scheme       *runtime.Scheme
-	secretMapper resourceToRequestsMapper
+	secretMapper resourceToRequestsMap
 }
 
 // Reconcile reads that state of the cluster for a ImageBuildEnv object and makes changes based on the state read
@@ -112,7 +112,6 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
 			r.secretMapper.Del(request.NamespacedName)
-			r.secretMapper.Apply()
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -184,14 +183,12 @@ func (r *ReconcileImageBuildEnv) upsertMergedSecretForCR(cr *registryv1alpha1.Im
 
 func (r *ReconcileImageBuildEnv) watchSecretsForCR(cr *registryv1alpha1.ImageBuildEnv) []types.NamespacedName {
 	crKey := types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}
-	r.secretMapper.Del(crKey)
 	secretKeys := make([]types.NamespacedName, len(cr.Spec.Secrets))
 	for i, s := range cr.Spec.Secrets {
 		key := types.NamespacedName{Name: s.SecretName, Namespace: cr.Namespace}
 		secretKeys[i] = key
-		r.secretMapper.Add(crKey, key)
 	}
-	r.secretMapper.Apply()
+	r.secretMapper.Put(crKey, secretKeys)
 	return secretKeys
 }
 
@@ -289,7 +286,7 @@ func (r *ReconcileImageBuildEnv) createRedisPodForCR(cr *registryv1alpha1.ImageB
 		{
 			Name: "redis-conf",
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: pod.Name},
+				Secret: &corev1.SecretVolumeSource{SecretName: pod.Name + "-conf"},
 			}},
 	}
 	pod.Spec.Containers = []corev1.Container{
@@ -352,7 +349,7 @@ func (r *ReconcileImageBuildEnv) upsertRedisServiceForCR(cr *registryv1alpha1.Im
 
 func (r *ReconcileImageBuildEnv) upsertRedisSecretForCR(cr *registryv1alpha1.ImageBuildEnv) (password []byte, err error) {
 	secret := &corev1.Secret{}
-	secret.Name = redisNameForCR(cr)
+	secret.Name = redisNameForCR(cr) + "-conf"
 	secret.Namespace = cr.Namespace
 	secret.Type = corev1.SecretTypeOpaque
 	err = controllerutil.SetControllerReference(cr, secret, r.scheme)
@@ -361,13 +358,13 @@ func (r *ReconcileImageBuildEnv) upsertRedisSecretForCR(cr *registryv1alpha1.Ima
 	}
 	_, err = controllerutil.CreateOrUpdate(context.TODO(), r.client, secret, func() error {
 		if secret.Data != nil && len(secret.Data["redis_password"]) > 0 {
-			password = secret.Data["redis_password"]
+			password = secret.Data[registryv1alpha1.SecretKeyRedisPassword]
 		} else {
 			password = passwordgen.GeneratePassword()
 		}
 		secret.Data = map[string][]byte{
-			"redis_password": password,
-			"redis.conf":     []byte("requirepass " + string(password)),
+			registryv1alpha1.SecretKeyRedisPassword: password,
+			"redis.conf":                            []byte("requirepass " + string(password)),
 		}
 		return nil
 	})

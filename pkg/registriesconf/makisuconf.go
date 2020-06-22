@@ -3,7 +3,6 @@ package registriesconf
 import (
 	"encoding/base64"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v2"
 )
@@ -14,19 +13,11 @@ type MakisuRepos map[string]MakisuRepo
 // Config contains Docker registry client configuration.
 // See https://github.com/uber/makisu/blob/master/docs/REGISTRY.md
 type MakisuRepo struct {
-	Concurrency int           `yaml:"concurrency"`
-	Timeout     time.Duration `yaml:"timeout"`
-	Retries     int           `yaml:"retries"`
-	PushRate    float64       `yaml:"push_rate"`
-	// If not specify, a default chunk size will be used.
-	// Set it to -1 to turn off chunk upload.
-	// NOTE: gcr does not support chunked upload.
-	PushChunk int64          `yaml:"push_chunk"`
-	Security  MakisuSecurity `yaml:"security"`
+	Security MakisuSecurity `yaml:"security"`
 }
 
 type MakisuSecurity struct {
-	TLS       MakisuTLS       `yaml:"tls"`
+	TLS       *MakisuTLS      `yaml:"tls,omitempty"`
 	BasicAuth MakisuBasicAuth `yaml:"basic"`
 }
 

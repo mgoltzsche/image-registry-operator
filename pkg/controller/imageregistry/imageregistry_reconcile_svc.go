@@ -84,6 +84,13 @@ func (r *ReconcileImageRegistry) reconcilePersistentVolumeClaim(instance *regist
 
 		pvc.Spec.AccessModes = accessModes
 		pvc.Spec.Resources = instance.Spec.PersistentVolumeClaim.Resources
+
+		a := pvc.GetAnnotations()
+		if a == nil {
+			a = map[string]string{}
+		}
+		a[string(annotationImageRegistry)] = fmt.Sprintf("%s/%s", instance.GetNamespace(), instance.GetName())
+		pvc.SetAnnotations(a)
 		return nil
 	})
 }
