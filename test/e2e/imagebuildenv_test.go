@@ -52,7 +52,7 @@ func testImageBuildEnv(t *testing.T, ctx *framework.Context, redis bool, secretN
 
 	// Verify merged Secret
 	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{Name: "imagebuildenv-" + cr.Name, Namespace: cr.Namespace}
+	secretKey := types.NamespacedName{Name: "imagebuildenv-" + cr.Name + "-conf", Namespace: cr.Namespace}
 	err = f.Client.Get(context.TODO(), secretKey, secret)
 	require.NoError(t, err, "get secret")
 	require.NotNil(t, secret.Data, "secret data")

@@ -168,7 +168,7 @@ func (r *ReconcileImageBuildEnv) updateStatus(cr *registryv1alpha1.ImageBuildEnv
 
 func (r *ReconcileImageBuildEnv) upsertMergedSecretForCR(cr *registryv1alpha1.ImageBuildEnv, data map[string][]byte) (err error) {
 	mergedSecret := &corev1.Secret{}
-	mergedSecret.Name = "imagebuildenv-" + cr.Name
+	mergedSecret.Name = "imagebuildenv-" + cr.Name + "-conf"
 	mergedSecret.Namespace = cr.Namespace
 	mergedSecret.Type = corev1.SecretTypeOpaque
 	if err = controllerutil.SetControllerReference(cr, mergedSecret, r.scheme); err != nil {
