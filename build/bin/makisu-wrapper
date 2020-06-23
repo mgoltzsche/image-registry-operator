@@ -6,7 +6,7 @@ export REGISTRY_CONFIG=/makisu-internal/makisu.yaml
 export REDIS="$(cat $CONFIGDIR/redis 2>/dev/null)"
 export REDIS_PASSWORD="$(cat $CONFIGDIR/redis_password 2>/dev/null)"
 
-[ ! -f "$CONFIGDIR/ca.crt" ] || ln -s "$CONFIGDIR/ca.crt" /makisu-internal/certs/ca.crt
+[ ! -f "$CONFIGDIR/ca.crt" ] || cat "$CONFIGDIR/ca.crt" >> /makisu-internal/certs/cacerts.pem
 
 (
 	{
