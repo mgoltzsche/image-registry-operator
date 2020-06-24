@@ -1,3 +1,14 @@
+---
+apiVersion: registry.mgoltzsche.github.com/v1alpha1
+kind: ImageBuildEnv
+metadata:
+  name: example
+spec:
+  redis: true
+  secrets:
+  - secretName: imagepushsecret-example
+
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -27,13 +38,15 @@ spec:
         image: mgoltzsche/image-registry-operator:makisu
         imagePullPolicy: Always
         args:
-         - build
-         - --log-fmt=console
-         - --registry-config=$REGISTRY_CONFIG
-         - --push=$REGISTRY
-         - --modifyfs=true
-         - -t=example:latest
-         - /makisu-context
+        - build
+        - --log-fmt=console
+        - --redis-cache-addr=$REDIS
+        - --redis-cache-password=$REDIS_PASSWORD
+        - --registry-config=/makisu-internal/config/makisu.yaml
+        - --push=$REGISTRY
+        - --modifyfs=true
+        - -t=example:latest
+        - /makisu-context
         volumeMounts:
         - name: context
           mountPath: /makisu-context
@@ -48,4 +61,33 @@ spec:
         emptyDir: {}
       - name: registry-config
         secret:
-          secretName: imagepushsecret-example
+          secretName: imagebuildenv-example-conf
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: example
+imagePullSecrets:
+- name: imagepullsecret-example
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: myapp
+  template:
+    metadata:
+      labels:
+        name: myapp
+    spec:
+      serviceAccount: example
+      containers:
+        - name: example
+          image: registry.default.svc.cluster.local/example:latest
+          imagePullPolicy: Always

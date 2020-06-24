@@ -152,9 +152,23 @@ kubectl apply -f - <<-EOF
 EOF
 ```
 
+Create an `ImageBuildEnv`:
+```
+kubectl apply -f - <<-EOF
+	apiVersion: registry.mgoltzsche.github.com/v1alpha1
+	kind: ImageBuildEnv
+	metadata:
+	  name: example
+	spec:
+	  redis: true
+	  secrets:
+	  - secretName: imagepushsecret-example
+EOF
+```
+
 Configure your local host to use the previously created `ImagePushSecret`'s Docker config:
 ```
-kubectl get secret imagepushsecret-example -o jsonpath='{.data.config\.json}' | base64 -d > ~/.docker/config.json
+kubectl get secret imagepushsecret-example -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > ~/.docker/config.json
 ```
 To use a self-signed registry cert (for development) configure `/etc/docker/daemon.json` with (docker needs to be restarted):
 ```
