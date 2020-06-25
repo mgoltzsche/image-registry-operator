@@ -1,4 +1,4 @@
-package imagebuildenv
+package torequests
 
 import (
 	"fmt"
@@ -9,17 +9,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-type resourceToRequestsMap struct {
+type Map struct {
 	mapping map[string][]reconcile.Request
 	mutex   *sync.Mutex
 }
 
-func newRequestMap() resourceToRequestsMap {
-	return resourceToRequestsMap{map[string][]reconcile.Request{}, &sync.Mutex{}}
+func NewMap() Map {
+	return Map{map[string][]reconcile.Request{}, &sync.Mutex{}}
 }
 
 // Map maps a given object (by namespaced name) to reconcile requests
-func (m resourceToRequestsMap) Map(o handler.MapObject) (r []reconcile.Request) {
+func (m Map) Map(o handler.MapObject) (r []reconcile.Request) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	meta := o.Meta
@@ -31,23 +31,23 @@ func (m resourceToRequestsMap) Map(o handler.MapObject) (r []reconcile.Request) 
 }
 
 // Add mapping from secret to instance or rather makes instance watch secret
-func (m resourceToRequestsMap) Put(instance types.NamespacedName, secrets []types.NamespacedName) {
+func (m Map) Put(instance types.NamespacedName, refs []types.NamespacedName) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.del(instance)
-	for _, s := range secrets {
+	for _, s := range refs {
 		m.put(instance, s)
 	}
 }
 
 // Del removes instance's secret mappings
-func (m resourceToRequestsMap) Del(instance types.NamespacedName) {
+func (m Map) Del(instance types.NamespacedName) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.del(instance)
 }
 
-func (m resourceToRequestsMap) put(instance, secret types.NamespacedName) {
+func (m Map) put(instance, secret types.NamespacedName) {
 	key := fmt.Sprintf("%s/%s", secret.Namespace, secret.Name)
 	r := m.mapping[key]
 	if r == nil {
@@ -64,7 +64,7 @@ func (m resourceToRequestsMap) put(instance, secret types.NamespacedName) {
 	m.mapping[key] = r
 }
 
-func (m resourceToRequestsMap) del(instance types.NamespacedName) {
+func (m Map) del(instance types.NamespacedName) {
 	for k, v := range m.mapping {
 		filtered := make([]reconcile.Request, 0, len(v))
 		for _, r := range v {

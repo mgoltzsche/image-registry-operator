@@ -4,14 +4,22 @@ cd "$(dirname $0)"/..
 
 TEST_NAMESPACE=registry-test-$(date '+%Y%m%d-%H%M%S')
 
+deleteOperatorDeployment() {
+	# Don't delete CRDs to let the registry run for local development
+	kubectl delete -n image-registry-operator -k deploy/operator
+}
+
 set -x
+
+ALREADY_INSTALLED=''
+kubectl get ns image-registry-operator >/dev/null || ALREADY_INSTALLED=1
 
 (
 	set -ex
 	kubectl create namespace ${TEST_NAMESPACE}-issuer
 	kubectl create namespace ${TEST_NAMESPACE}-self-signed
 	kubectl create namespace ${TEST_NAMESPACE}-user
-	kubectl apply -k deploy/cluster-wide
+	kubectl apply -k deploy/minikube
 	for REG in self-signed issuer; do
 		kubectl apply -k deploy/examples/registry-$REG -n ${TEST_NAMESPACE}-$REG
 		kubectl wait --for condition=ready --timeout 120s -n ${TEST_NAMESPACE}-$REG imageregistry/registry
@@ -63,4 +71,9 @@ echo >&2
 kubectl delete namespace ${TEST_NAMESPACE}-user
 kubectl delete namespace ${TEST_NAMESPACE}-self-signed
 kubectl delete namespace ${TEST_NAMESPACE}-issuer
+if [ ! "$ALREADY_INSTALLED" ]; then
+	deleteOperatorDeployment
+else
+	kubectl delete -k deploy/minikube
+fi
 exit $STATUS

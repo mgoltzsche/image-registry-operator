@@ -1,14 +1,11 @@
 package imageregistry
 
 import (
-	"fmt"
-	"strings"
-
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/torequests"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,7 +17,7 @@ import (
 var log = logf.Log.WithName("controller_imageregistry")
 
 const (
-	annotationImageRegistry = annotationToRequest("registry.mgoltzsche.github.com/imageregistry")
+	annotationImageRegistry = torequests.AnnotationToRequest("registry.mgoltzsche.github.com/imageregistry")
 )
 
 // Add creates a new ImageRegistry Controller and adds it to the Manager. The Manager will set fields on the Controller
@@ -104,23 +101,4 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	return nil
-}
-
-type annotationToRequest string
-
-func (c annotationToRequest) Map(o handler.MapObject) (r []reconcile.Request) {
-	fmt.Println("##", o.Meta.GetName())
-	a := o.Meta.GetAnnotations()
-	if a == nil {
-		return
-	}
-	fullName := a[string(c)]
-	if fullName == "" {
-		return
-	}
-	s := strings.SplitN(fullName, "/", 2)
-	if len(s) < 2 {
-		return
-	}
-	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: s[0], Name: s[1]}}}
 }

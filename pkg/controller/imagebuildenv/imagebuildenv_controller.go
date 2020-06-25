@@ -8,6 +8,7 @@ import (
 	"github.com/mgoltzsche/image-registry-operator/pkg/merge"
 	"github.com/mgoltzsche/image-registry-operator/pkg/passwordgen"
 	"github.com/mgoltzsche/image-registry-operator/pkg/registriesconf"
+	"github.com/mgoltzsche/image-registry-operator/pkg/torequests"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -34,7 +35,7 @@ const (
 // Add creates a new ImageBuildEnv Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	secretMapper := newRequestMap()
+	secretMapper := torequests.NewMap()
 	r := &ReconcileImageBuildEnv{client: mgr.GetClient(), scheme: mgr.GetScheme(), secretMapper: secretMapper}
 
 	// Create a new controller
@@ -91,7 +92,7 @@ type ReconcileImageBuildEnv struct {
 	// that reads objects from the cache and writes to the apiserver
 	client       client.Client
 	scheme       *runtime.Scheme
-	secretMapper resourceToRequestsMap
+	secretMapper torequests.Map
 }
 
 // Reconcile reads that state of the cluster for a ImageBuildEnv object and makes changes based on the state read

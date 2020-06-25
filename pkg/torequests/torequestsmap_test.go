@@ -1,4 +1,4 @@
-package imagebuildenv
+package torequests
 
 import (
 	"testing"
@@ -10,8 +10,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-func TestResourceToRequestsMapper(t *testing.T) {
-	m := newRequestMap()
+func TestMap(t *testing.T) {
+	m := NewMap()
 	name := types.NamespacedName{Name: "myresource", Namespace: "mynamespace"}
 	otherName := types.NamespacedName{Name: "myother", Namespace: "mynamespace"}
 	watchedName1 := types.NamespacedName{Name: "watched", Namespace: "watchedns"}
