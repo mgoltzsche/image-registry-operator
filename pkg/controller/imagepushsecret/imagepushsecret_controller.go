@@ -14,15 +14,18 @@ import (
 
 var log = logf.Log.WithName("controller_imagepushsecret")
 
+const pushAccountAnnotation = torequests.AnnotationToRequest("registry.mgoltzsche.github.com/imagepushsecret")
+
 // Add creates a new ImagePushSecret Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
 	registryMap := torequests.NewMap()
 	r := imagesecret.NewReconciler(mgr, registryMap, log, imagesecret.ReconcileImageSecretConfig{
-		CRFactory:       func() registryapi.ImageSecretInterface { return &registryapi.ImagePushSecret{} },
-		Intent:          registryapi.TypePush,
-		SecretType:      corev1.SecretTypeDockerConfigJson,
-		DockerConfigKey: corev1.DockerConfigJsonKey,
+		CRFactory:         func() registryapi.ImageSecretInterface { return &registryapi.ImagePushSecret{} },
+		Intent:            registryapi.TypePush,
+		SecretType:        corev1.SecretTypeDockerConfigJson,
+		DockerConfigKey:   corev1.DockerConfigJsonKey,
+		AccountAnnotation: pushAccountAnnotation,
 	})
 
 	c, err := controller.New("imagepushsecret-controller", mgr, controller.Options{Reconciler: r})
@@ -35,5 +38,5 @@ func Add(mgr manager.Manager) error {
 		return err
 	}
 
-	return imagesecret.WatchSecondaryResources(c, &registryapi.ImagePushSecret{}, registryMap)
+	return imagesecret.WatchSecondaryResources(c, &registryapi.ImagePushSecret{}, registryMap, pushAccountAnnotation)
 }

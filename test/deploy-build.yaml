@@ -1,24 +1,55 @@
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: myapp
+imagePullSecrets:
+- name: imagepullsecret-myapp
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp
+spec:
+spec:
+  serviceAccount: myapp
+  containers:
+    - name: myapp
+      image: registry.default.svc.cluster.local/myapp:latest
+      imagePullPolicy: Always
+
+---
 apiVersion: registry.mgoltzsche.github.com/v1alpha1
 kind: ImageBuildEnv
 metadata:
-  name: example
+  name: myapp
 spec:
   redis: true
   secrets:
-  - secretName: imagepushsecret-example
+  - secretName: imagepushsecret-myapp
+
+---
+apiVersion: registry.mgoltzsche.github.com/v1alpha1
+kind: ImagePushSecret
+metadata:
+  name: myapp
+spec:
+  registryRef: # when omitted operator's default registry is used
+    name: registry
+    #namespace: infra # another namespace's registry could be used
 
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: makisu-job
+  name: myapp-build-job
 spec:
   template:
     spec:
       restartPolicy: Never
       initContainers:
-      # here a git repo could be cloned
+      # a git repo could be cloned here
       - name: provisioner
         image: alpine:3.12
         command: ["/bin/sh", "-c"]
@@ -45,7 +76,7 @@ spec:
         - --registry-config=/makisu-internal/config/makisu.yaml
         - --push=$REGISTRY
         - --modifyfs=true
-        - -t=example:latest
+        - -t=myapp:latest
         - /makisu-context
         volumeMounts:
         - name: context
@@ -61,4 +92,19 @@ spec:
         emptyDir: {}
       - name: registry-config
         secret:
-          secretName: imagebuildenv-example-conf
+          secretName: imagebuildenv-myapp-conf
+
+---
+apiVersion: registry.mgoltzsche.github.com/v1alpha1
+kind: ImageRegistry
+metadata:
+  name: registry
+spec:
+  replicas: 1
+  tls: {}
+  persistentVolumeClaim:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi

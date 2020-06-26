@@ -19,7 +19,7 @@ func (c AnnotationToRequest) Map(o handler.MapObject) (r []reconcile.Request) {
 	if fullName == "" {
 		return
 	}
-	s := strings.SplitN(fullName, "/", 2)
+	s := strings.SplitN(fullName, string(types.Separator), 2)
 	if len(s) < 2 || s[0] == "" || s[1] == "" {
 		return
 	}

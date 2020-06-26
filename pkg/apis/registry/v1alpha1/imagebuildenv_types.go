@@ -6,7 +6,6 @@ import (
 )
 
 const (
-	ConditionReady         = status.ConditionType("Ready")
 	ReasonMissingSecret    = status.ConditionReason("MissingSecret")
 	ReasonInvalidSecret    = status.ConditionReason("InvalidSecret")
 	ReasonFailedUpdate     = status.ConditionReason("FailedUpdate")

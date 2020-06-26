@@ -7,12 +7,15 @@ import (
 )
 
 const (
-	TypePull          ImageSecretType = "pull"
-	TypePush          ImageSecretType = "push"
-	SecretKeyCaCert                   = "ca.crt"
-	SecretKeyRegistry                 = "registry"
-	SecretKeyUsername                 = "username"
-	SecretKeyPassword                 = "password"
+	TypePull                  ImageSecretType = "pull"
+	TypePush                  ImageSecretType = "push"
+	SecretKeyCaCert                           = "ca.crt"
+	SecretKeyRegistry                         = "registry"
+	SecretKeyUsername                         = "username"
+	SecretKeyPassword                         = "password"
+	ConditionReady                            = "Ready"
+	ReasonRegistryUnavailable                 = "RegistryUnavailable"
+	ReasonFailedSync                          = status.ConditionReason("FailedSync")
 )
 
 type ImageSecretType string

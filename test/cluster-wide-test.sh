@@ -65,6 +65,9 @@ kubectl get ns image-registry-operator >/dev/null || ALREADY_INSTALLED=1
 		kubectl describe -n ${TEST_NAMESPACE}-user pod example-app
 		false
 	)
+	# Test reverse resource deployment
+	kubectl apply -n ${TEST_NAMESPACE}-user -f test/deploy-build.yaml
+	kubectl wait -n ${TEST_NAMESPACE}-user imagebuildenv myapp --for condition=ready --timeout 60s
 )
 STATUS=$?
 echo >&2

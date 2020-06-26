@@ -33,18 +33,15 @@ import (
 const (
 	RequeueDelaySeconds         = 30 * time.Second
 	RequeueDelayErrorSeconds    = 5 * time.Second
-	ConditionReady              = "Ready"
-	ReasonRegistryUnavailable   = "RegistryUnavailable"
-	ReasonFailedSync            = status.ConditionReason("FailedSync")
 	EnvDefaultRegistryName      = "OPERATOR_DEFAULT_REGISTRY_NAME"
 	EnvDefaultRegistryNamespace = "OPERATOR_DEFAULT_REGISTRY_NAMESPACE"
 	EnvSecretTTL                = "OPERATOR_SECRET_TTL"
-	AnnotationSecretRotation    = "registry.mgoltzsche.github.com/rotation"
+	annotationSecretRotation    = "registry.mgoltzsche.github.com/rotation"
 	defaultAccountTTL           = 24 * time.Hour
 )
 
 // WatchSecondaryResources watches resources created or referenced by a secret CR
-func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, registryMap torequests.Map) (err error) {
+func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, registryMap torequests.Map, accountMap torequests.AnnotationToRequest) (err error) {
 	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    ownerType,
@@ -59,15 +56,24 @@ func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, 
 	if err != nil {
 		return
 	}
-	return c.Watch(&source.Kind{Type: &registryapi.ImageRegistry{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: registryMap})
+	err = c.Watch(&source.Kind{Type: &registryapi.ImageRegistry{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: registryMap})
+	if err != nil {
+		return
+	}
+	err = c.Watch(&source.Kind{Type: &registryapi.ImageRegistryAccount{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: accountMap})
+	if err != nil {
+		return
+	}
+	return
 }
 
 // ReconcileImageSecretConfig image secret CR reconciler
 type ReconcileImageSecretConfig struct {
-	Intent          registryapi.ImageSecretType
-	SecretType      corev1.SecretType
-	DockerConfigKey string
-	CRFactory       SecretResourceFactory
+	Intent            registryapi.ImageSecretType
+	SecretType        corev1.SecretType
+	DockerConfigKey   string
+	CRFactory         SecretResourceFactory
+	AccountAnnotation torequests.AnnotationToRequest
 }
 
 // NewReconciler returns a new reconcile.Reconciler
@@ -163,9 +169,9 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 	registry, err := r.getRegistry(registryKey)
 	if err != nil {
 		instanceStatus.Conditions.SetCondition(status.Condition{
-			Type:    ConditionReady,
+			Type:    registryapi.ConditionReady,
 			Status:  corev1.ConditionFalse,
-			Reason:  ReasonRegistryUnavailable,
+			Reason:  registryapi.ReasonRegistryUnavailable,
 			Message: err.Error(),
 		})
 		r.client.Status().Update(context.TODO(), instance)
@@ -198,14 +204,14 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 	// Update ImageRegistryAccount & Secret
 	hostnameCaChanged := string(secret.Data[registryapi.SecretKeyRegistry]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
 	needsRenewal := time.Now().Sub(account.CreationTimestamp.Time) > r.rotationInterval
-	secretOutOfSync := secret.Annotations == nil || secret.Annotations[AnnotationSecretRotation] != strconv.FormatInt(instance.GetStatus().Rotation, 10)
+	secretOutOfSync := secret.Annotations == nil || secret.Annotations[annotationSecretRotation] != strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	if !accountExists || !secretExists || secretOutOfSync || needsRenewal || hostnameCaChanged {
 		err = r.rotatePassword(instance, registry, secret, reqLogger)
 		if err != nil {
 			if instanceStatus.Conditions.SetCondition(status.Condition{
-				Type:    ConditionReady,
+				Type:    registryapi.ConditionReady,
 				Status:  corev1.ConditionFalse,
-				Reason:  ReasonFailedSync,
+				Reason:  registryapi.ReasonFailedSync,
 				Message: err.Error(),
 			}) {
 				r.client.Status().Update(context.TODO(), instance)
@@ -215,7 +221,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 	}
 
 	if instanceStatus.Conditions.SetCondition(status.Condition{
-		Type:   ConditionReady,
+		Type:   registryapi.ConditionReady,
 		Status: corev1.ConditionTrue,
 	}) {
 		err = r.client.Status().Update(context.TODO(), instance)
@@ -255,9 +261,11 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 	if err = r.client.Status().Update(context.TODO(), instance); err != nil {
 		return
 	}
+	crName := types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}
 	account := &registryapi.ImageRegistryAccount{}
 	account.Name = accountNameForCR(instance)
 	account.Namespace = registry.Namespace
+	account.Annotations = map[string]string{string(r.cfg.AccountAnnotation): crName.String()}
 	account.Spec.TTL = &metav1.Duration{r.accountTTL}
 	account.Spec.Password = string(newPasswordHash)
 	account.Spec.Labels = map[string][]string{
@@ -280,7 +288,7 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 		AddAuth(registry.Hostname, account.Name, string(newPassword)).
 		JSON()
 	secret.Type = r.cfg.SecretType
-	secret.Annotations[AnnotationSecretRotation] = strconv.FormatInt(instance.GetStatus().Rotation, 10)
+	secret.Annotations[annotationSecretRotation] = strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	secret.Data = map[string][]byte{}
 	secret.Data[registryapi.SecretKeyUsername] = []byte(account.Name)
 	secret.Data[registryapi.SecretKeyPassword] = newPassword

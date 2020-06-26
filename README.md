@@ -152,7 +152,7 @@ kubectl apply -f - <<-EOF
 EOF
 ```
 
-Create an `ImageBuildEnv`:
+Create an `ImageBuildEnv` using the previously created secret:
 ```
 kubectl apply -f - <<-EOF
 	apiVersion: registry.mgoltzsche.github.com/v1alpha1
@@ -175,7 +175,6 @@ To use a self-signed registry cert (for development) configure `/etc/docker/daem
 {
   "insecure-registries" : ["registry.default.svc.cluster.local"]
 }
-
 ```
 When running the registry in minikube you need to map the `registry` Service's IP on your host.
 
