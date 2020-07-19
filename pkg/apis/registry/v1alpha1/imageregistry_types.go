@@ -7,6 +7,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	ConditionSynced  = status.ConditionType("Synced")
+	ConditionReady   = status.ConditionType("Ready")
+	ReasonFailedSync = status.ConditionReason("FailedSync")
+	ReasonUpdating   = status.ConditionReason("Updating")
+)
+
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 

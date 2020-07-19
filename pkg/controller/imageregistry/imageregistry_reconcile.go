@@ -20,15 +20,23 @@ import (
 )
 
 const (
-	ConditionSynced  = status.ConditionType("Synced")
-	ConditionReady   = status.ConditionType("Ready")
-	ReasonFailedSync = status.ConditionReason("FailedSync")
-	ReasonUpdating   = status.ConditionReason("Updating")
 	EnvDnsZone       = "OPERATOR_DNS_ZONE"
 	EnvImageAuth     = "OPERATOR_IMAGE_AUTH"
 	EnvImageNginx    = "OPERATOR_IMAGE_NGINX"
 	EnvImageRegistry = "OPERATOR_IMAGE_REGISTRY"
 )
+
+func DNSZone() string {
+	dnsZone := os.Getenv(EnvDnsZone)
+	if dnsZone == "" {
+		return "svc.cluster.local"
+	}
+	return dnsZone
+}
+
+func RegistryHostname(cr *registryv1alpha1.ImageRegistry, dnsZone string) string {
+	return fmt.Sprintf("%s.%s.%s", serviceNameForCR(cr), cr.Namespace, dnsZone)
+}
 
 // blank assignment to verify that ReconcileImageRegistry implements reconcile.Reconciler
 var _ reconcile.Reconciler = &ReconcileImageRegistry{}
@@ -55,13 +63,10 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		client:        mgr.GetClient(),
 		scheme:        mgr.GetScheme(),
 		certManager:   certs.NewCertManager(mgr.GetClient(), mgr.GetScheme(), certs.RootCASecretName()),
-		dnsZone:       os.Getenv(EnvDnsZone),
+		dnsZone:       DNSZone(),
 		imageAuth:     os.Getenv(EnvImageAuth),
 		imageNginx:    os.Getenv(EnvImageNginx),
 		imageRegistry: os.Getenv(EnvImageRegistry),
-	}
-	if r.dnsZone == "" {
-		r.dnsZone = "svc.cluster.local"
 	}
 	if r.imageAuth == "" {
 		r.imageAuth = "mgoltzsche/image-registry-operator:latest-auth"
@@ -120,7 +125,7 @@ func (r *ReconcileImageRegistry) Reconcile(request reconcile.Request) (reconcile
 
 	// Update ImageRegistry status
 	syncCond := status.Condition{
-		Type:   ConditionSynced,
+		Type:   registryv1alpha1.ConditionSynced,
 		Status: corev1.ConditionTrue,
 	}
 	if err != nil {
@@ -130,9 +135,9 @@ func (r *ReconcileImageRegistry) Reconcile(request reconcile.Request) (reconcile
 	instance.Status.Conditions.SetCondition(syncCond)
 	if syncCond.Status == corev1.ConditionFalse {
 		instance.Status.Conditions.SetCondition(status.Condition{
-			Type:   ConditionReady,
+			Type:   registryv1alpha1.ConditionReady,
 			Status: corev1.ConditionFalse,
-			Reason: ReasonFailedSync,
+			Reason: registryv1alpha1.ReasonFailedSync,
 		})
 	}
 	changedCond := false
@@ -184,7 +189,7 @@ func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, o
 }
 
 func (r *ReconcileImageRegistry) externalHostnameForCR(cr *registryv1alpha1.ImageRegistry) string {
-	return fmt.Sprintf("%s.%s.%s", serviceNameForCR(cr), cr.Namespace, r.dnsZone)
+	return RegistryHostname(cr, r.dnsZone)
 }
 
 func selectorLabelsForCR(cr *registryv1alpha1.ImageRegistry) map[string]string {

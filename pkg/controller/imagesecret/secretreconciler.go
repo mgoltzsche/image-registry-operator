@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-logr/logr"
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imageregistry"
 	"github.com/mgoltzsche/image-registry-operator/pkg/passwordgen"
 	"github.com/mgoltzsche/image-registry-operator/pkg/registriesconf"
-	"github.com/mgoltzsche/image-registry-operator/pkg/torequests"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	corev1 "k8s.io/api/core/v1"
@@ -41,7 +41,7 @@ const (
 )
 
 // WatchSecondaryResources watches resources created or referenced by a secret CR
-func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, registryMap torequests.Map, accountMap torequests.AnnotationToRequest) (err error) {
+func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, accountMap backrefs.AnnotationToRequest) (err error) {
 	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    ownerType,
@@ -53,10 +53,6 @@ func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, 
 		IsController: true,
 		OwnerType:    ownerType,
 	})
-	if err != nil {
-		return
-	}
-	err = c.Watch(&source.Kind{Type: &registryapi.ImageRegistry{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: registryMap})
 	if err != nil {
 		return
 	}
@@ -73,11 +69,11 @@ type ReconcileImageSecretConfig struct {
 	SecretType        corev1.SecretType
 	DockerConfigKey   string
 	CRFactory         SecretResourceFactory
-	AccountAnnotation torequests.AnnotationToRequest
+	AccountAnnotation backrefs.AnnotationToRequest
 }
 
 // NewReconciler returns a new reconcile.Reconciler
-func NewReconciler(mgr manager.Manager, registriesMap torequests.Map, logger logr.Logger, cfg ReconcileImageSecretConfig) reconcile.Reconciler {
+func NewReconciler(mgr manager.Manager, logger logr.Logger, cfg ReconcileImageSecretConfig) reconcile.Reconciler {
 	defaultRegistryRef := registryapi.ImageRegistryRef{
 		Name:      os.Getenv(EnvDefaultRegistryName),
 		Namespace: os.Getenv(EnvDefaultRegistryNamespace),
@@ -88,7 +84,7 @@ func NewReconciler(mgr manager.Manager, registriesMap torequests.Map, logger log
 	if defaultRegistryRef.Namespace == "" {
 		ns, err := k8sutil.GetOperatorNamespace()
 		if err != nil {
-			ns = os.Getenv("WATCH_NAMESPACE")
+			ns = os.Getenv(k8sutil.WatchNamespaceEnvVar)
 			if ns == "" {
 				panic(fmt.Sprintf("could not detect operator namespace to derive %s - set it alternatively", EnvDefaultRegistryNamespace))
 			}
@@ -116,7 +112,7 @@ func NewReconciler(mgr manager.Manager, registriesMap torequests.Map, logger log
 		defaultRegistry:  defaultRegistryRef,
 		accountTTL:       accountTTL,
 		rotationInterval: accountTTL / 2,
-		registriesMap:    registriesMap,
+		dnsZone:          imageregistry.DNSZone(),
 	}
 }
 
@@ -134,7 +130,7 @@ type ReconcileImageSecret struct {
 	defaultRegistry  registryapi.ImageRegistryRef
 	rotationInterval time.Duration
 	accountTTL       time.Duration
-	registriesMap    torequests.Map
+	dnsZone          string
 }
 
 // Reconcile reads that state of the cluster for a ImagePullSecret object and makes changes based on the state read
@@ -161,24 +157,20 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	// Map registry changes to secret CR reconcile requests (in watch handler)
-	registryKey := r.getRegistryKeyForCR(instance)
-	r.registriesMap.Put(request.NamespacedName, []types.NamespacedName{registryKey})
-
 	// Fetch the registry
-	registry, err := r.getRegistry(registryKey)
+	registry, err := r.getRegistry(r.getRegistryKeyForCR(instance))
 	if err != nil {
-		instanceStatus.Conditions.SetCondition(status.Condition{
+		if instanceStatus.Conditions.SetCondition(status.Condition{
 			Type:    registryapi.ConditionReady,
 			Status:  corev1.ConditionFalse,
 			Reason:  registryapi.ReasonRegistryUnavailable,
 			Message: err.Error(),
-		})
-		r.client.Status().Update(context.TODO(), instance)
+		}) {
+			r.client.Status().Update(context.TODO(), instance)
+		}
 		if errors.IsNotFound(err) {
-			// Do not reconcile when registry doesn't exist
-			// (requires reconcile event when registry changes)
-			return reconcile.Result{}, nil
+			// Reconcile after one minute when registry does not exist (yet)
+			return reconcile.Result{RequeueAfter: time.Minute}, nil
 		}
 		return reconcile.Result{}, err
 	}
@@ -332,7 +324,7 @@ func (r *ReconcileImageSecret) getRegistry(registryKey types.NamespacedName) (re
 	if err = r.client.Get(ctx, registryKey, registryCR); err != nil {
 		return
 	}
-	if !registryCR.Status.Conditions.IsTrueFor(imageregistry.ConditionReady) {
+	if !registryCR.Status.Conditions.IsTrueFor(registryapi.ConditionReady) {
 		// Allow caller to not reconcile when registry not ready
 		key := registryKey.String()
 		notFound := errors.NewNotFound(registryapi.SchemeGroupVersion.WithResource(key).GroupResource(), "")
@@ -345,7 +337,7 @@ func (r *ReconcileImageSecret) getRegistry(registryKey types.NamespacedName) (re
 	}
 	return &targetRegistry{
 		Namespace: registryCR.GetNamespace(),
-		Hostname:  registryCR.Status.Hostname,
+		Hostname:  imageregistry.RegistryHostname(registryCR, r.dnsZone),
 		CA:        secret.Data[registryapi.SecretKeyCaCert],
 	}, nil
 }

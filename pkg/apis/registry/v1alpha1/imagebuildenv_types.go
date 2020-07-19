@@ -33,6 +33,8 @@ type ImageBuildEnvStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions status.Conditions `json:"conditions,omitempty"`
+	// SecretRefs lists the watched input secrets
+	SecretRefs []string `json:"secretRefs,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

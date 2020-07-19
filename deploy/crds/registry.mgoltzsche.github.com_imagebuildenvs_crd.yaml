@@ -90,6 +90,11 @@ spec:
             observedGeneration:
               format: int64
               type: integer
+            secretRefs:
+              description: SecretRefs lists the watched input secrets
+              items:
+                type: string
+              type: array
           type: object
       type: object
   version: v1alpha1

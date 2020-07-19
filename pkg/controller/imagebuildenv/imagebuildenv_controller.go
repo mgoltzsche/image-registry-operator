@@ -3,12 +3,13 @@ package imagebuildenv
 import (
 	"context"
 	"fmt"
+	"time"
 
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	"github.com/mgoltzsche/image-registry-operator/pkg/merge"
 	"github.com/mgoltzsche/image-registry-operator/pkg/passwordgen"
 	"github.com/mgoltzsche/image-registry-operator/pkg/registriesconf"
-	"github.com/mgoltzsche/image-registry-operator/pkg/torequests"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -28,15 +29,19 @@ import (
 var log = logf.Log.WithName("controller_imagebuildenv")
 
 const (
-	redisPort     = 6379
-	redisPortName = "redis"
+	redisPort           = 6379
+	redisPortName       = "redis"
+	secretKeyConfigJson = "config.json"
 )
 
 // Add creates a new ImageBuildEnv Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	secretMapper := torequests.NewMap()
-	r := &ReconcileImageBuildEnv{client: mgr.GetClient(), scheme: mgr.GetScheme(), secretMapper: secretMapper}
+	r := &ReconcileImageBuildEnv{
+		client:     mgr.GetClient(),
+		scheme:     mgr.GetScheme(),
+		secretRefs: backrefs.NewBackReferencesHandler(mgr.GetClient(), backrefs.OwnerReferences()),
+	}
 
 	// Create a new controller
 	c, err := controller.New("imagebuildenv-controller", mgr, controller.Options{Reconciler: r})
@@ -68,14 +73,8 @@ func Add(mgr manager.Manager) error {
 	}
 
 	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &registryv1alpha1.ImageBuildEnv{},
+		OwnerType: &registryv1alpha1.ImageBuildEnv{},
 	})
-	if err != nil {
-		return err
-	}
-
-	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: secretMapper})
 	if err != nil {
 		return err
 	}
@@ -90,9 +89,9 @@ var _ reconcile.Reconciler = &ReconcileImageBuildEnv{}
 type ReconcileImageBuildEnv struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client       client.Client
-	scheme       *runtime.Scheme
-	secretMapper torequests.Map
+	client     client.Client
+	scheme     *runtime.Scheme
+	secretRefs *backrefs.BackReferencesHandler
 }
 
 // Reconcile reads that state of the cluster for a ImageBuildEnv object and makes changes based on the state read
@@ -112,23 +111,26 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
-			r.secretMapper.Del(request.NamespacedName)
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
-	// Watch secrets referenced in the CR
-	secretKeys := r.watchSecretsForCR(instance)
-
-	// Load & merge referenced docker config secrets
-	secrets, err := r.loadSecrets(secretKeys)
+	// Load referenced docker config secrets
+	secrets, err := r.loadInputSecretsForCR(instance)
 	if err != nil {
-		// secret not found
+		// secret not found - reconcile after one minute
 		err = r.updateStatus(instance, corev1.ConditionFalse, registryv1alpha1.ReasonMissingSecret, err.Error())
+		return reconcile.Result{RequeueAfter: time.Minute}, err
+	}
+	err = r.secretRefs.UpdateReferences(context.TODO(), &referenceOwner{instance}, secretsToObjects(secrets))
+	if err != nil {
+		err = r.updateStatus(instance, corev1.ConditionFalse, registryv1alpha1.ReasonFailedUpdate, err.Error())
 		return reconcile.Result{}, err
 	}
+
+	// Merge the secrets
 	data, err := r.mergeSecretData(secrets)
 	if err != nil {
 		// config invalid
@@ -136,6 +138,7 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 		return reconcile.Result{}, err
 	}
 
+	// Configure redis and upsert output Secret
 	ready, err := r.configureRedis(instance, data)
 	if err == nil {
 		if !ready {
@@ -152,6 +155,14 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 
 	err = r.updateStatus(instance, corev1.ConditionTrue, "", "")
 	return reconcile.Result{}, err
+}
+
+func secretsToObjects(secrets []*corev1.Secret) []backrefs.Object {
+	r := make([]backrefs.Object, len(secrets))
+	for i, s := range secrets {
+		r[i] = s
+	}
+	return r
 }
 
 func (r *ReconcileImageBuildEnv) updateStatus(cr *registryv1alpha1.ImageBuildEnv, ready corev1.ConditionStatus, reason status.ConditionReason, msg string) error {
@@ -182,20 +193,10 @@ func (r *ReconcileImageBuildEnv) upsertMergedSecretForCR(cr *registryv1alpha1.Im
 	return
 }
 
-func (r *ReconcileImageBuildEnv) watchSecretsForCR(cr *registryv1alpha1.ImageBuildEnv) []types.NamespacedName {
-	crKey := types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}
-	secretKeys := make([]types.NamespacedName, len(cr.Spec.Secrets))
+func (r *ReconcileImageBuildEnv) loadInputSecretsForCR(cr *registryv1alpha1.ImageBuildEnv) (secrets []*corev1.Secret, err error) {
+	secrets = make([]*corev1.Secret, len(cr.Spec.Secrets))
 	for i, s := range cr.Spec.Secrets {
 		key := types.NamespacedName{Name: s.SecretName, Namespace: cr.Namespace}
-		secretKeys[i] = key
-	}
-	r.secretMapper.Put(crKey, secretKeys)
-	return secretKeys
-}
-
-func (r *ReconcileImageBuildEnv) loadSecrets(secretKeys []types.NamespacedName) (secrets []*corev1.Secret, err error) {
-	secrets = make([]*corev1.Secret, len(secretKeys))
-	for i, key := range secretKeys {
 		secret := &corev1.Secret{}
 		err = r.client.Get(context.TODO(), key, secret)
 		if err != nil {
@@ -210,26 +211,16 @@ func (r *ReconcileImageBuildEnv) mergeSecretData(secrets []*corev1.Secret) (data
 	var (
 		makisuConf registriesconf.MakisuRegistries = map[string]registriesconf.MakisuRepos{}
 		dockerConf                                 = &registriesconf.DockerConfig{Auths: map[string]registriesconf.DockerConfigUrlAuth{}}
-		secretConf *registriesconf.DockerConfig
-		configJson []byte
+		inputConf  *registriesconf.DockerConfig
 	)
 	for _, secret := range secrets {
-		if secret.Data != nil {
-			if secret.Type != corev1.SecretTypeDockerConfigJson {
-				return nil, fmt.Errorf("secret %s has unsupported type %s, expected %s", secret.Name, secret.Type, corev1.SecretTypeDockerConfigJson)
-			}
-			configJson = secret.Data[corev1.DockerConfigJsonKey]
-		}
-		if len(configJson) == 0 {
-			return nil, fmt.Errorf("secret %s does not specify key %s", secret.Name, corev1.DockerConfigJsonKey)
-		}
-		secretConf, err = registriesconf.ParseDockerConfig(configJson)
+		inputConf, err = dockerConfigFromSecret(secret)
 		if err != nil {
 			return nil, fmt.Errorf("secret %s: %w", secret.Name, err)
 		}
 		// Merge config
-		if secretConf.Auths != nil {
-			for k, v := range secretConf.Auths {
+		if inputConf.Auths != nil {
+			for k, v := range inputConf.Auths {
 				dockerConf.Auths[k] = v
 				auth, e := registriesconf.ToMakisuBasicAuth(v.Auth)
 				if e != nil {
@@ -250,6 +241,28 @@ func (r *ReconcileImageBuildEnv) mergeSecretData(secrets []*corev1.Secret) (data
 	data[corev1.DockerConfigJsonKey] = dockerConf.JSON()
 	data[registryv1alpha1.SecretKeyMakisuYAML] = makisuConf.YAML()
 	return data, nil
+}
+
+func dockerConfigFromSecret(secret *corev1.Secret) (*registriesconf.DockerConfig, error) {
+	var configJson []byte
+	if secret.Data == nil {
+		return nil, fmt.Errorf("secret %s does not specify data", secret.Name)
+	}
+	switch secret.Type {
+	case corev1.SecretTypeDockerConfigJson:
+		configJson = secret.Data[corev1.DockerConfigJsonKey]
+		if len(configJson) == 0 {
+			return nil, fmt.Errorf("secret %s does not specify key %q", secret.Name, corev1.DockerConfigJsonKey)
+		}
+	case corev1.SecretTypeOpaque:
+		configJson = secret.Data[secretKeyConfigJson]
+		if len(configJson) == 0 {
+			return nil, fmt.Errorf("secret %s does not specify key %q", secret.Name, secretKeyConfigJson)
+		}
+	default:
+		return nil, fmt.Errorf("secret %s has unsupported type %s, expected %s or %s", secret.Name, secret.Type, corev1.SecretTypeDockerConfigJson, corev1.SecretTypeOpaque)
+	}
+	return registriesconf.ParseDockerConfig(configJson)
 }
 
 func (r *ReconcileImageBuildEnv) configureRedis(cr *registryv1alpha1.ImageBuildEnv, data map[string][]byte) (ready bool, err error) {

@@ -2,8 +2,8 @@ package imagepushsecret
 
 import (
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imagesecret"
-	"github.com/mgoltzsche/image-registry-operator/pkg/torequests"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -14,13 +14,12 @@ import (
 
 var log = logf.Log.WithName("controller_imagepushsecret")
 
-const pushAccountAnnotation = torequests.AnnotationToRequest("registry.mgoltzsche.github.com/imagepushsecret")
+const pushAccountAnnotation = backrefs.AnnotationToRequest("registry.mgoltzsche.github.com/imagepushsecret")
 
 // Add creates a new ImagePushSecret Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
-	registryMap := torequests.NewMap()
-	r := imagesecret.NewReconciler(mgr, registryMap, log, imagesecret.ReconcileImageSecretConfig{
+	r := imagesecret.NewReconciler(mgr, log, imagesecret.ReconcileImageSecretConfig{
 		CRFactory:         func() registryapi.ImageSecretInterface { return &registryapi.ImagePushSecret{} },
 		Intent:            registryapi.TypePush,
 		SecretType:        corev1.SecretTypeDockerConfigJson,
@@ -38,5 +37,5 @@ func Add(mgr manager.Manager) error {
 		return err
 	}
 
-	return imagesecret.WatchSecondaryResources(c, &registryapi.ImagePushSecret{}, registryMap, pushAccountAnnotation)
+	return imagesecret.WatchSecondaryResources(c, &registryapi.ImagePushSecret{}, pushAccountAnnotation)
 }

@@ -167,6 +167,11 @@ func (in *ImageBuildEnvStatus) DeepCopyInto(out *ImageBuildEnvStatus) {
 			(*out)[key] = *val.DeepCopy()
 		}
 	}
+	if in.SecretRefs != nil {
+		in, out := &in.SecretRefs, &out.SecretRefs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

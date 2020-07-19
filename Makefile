@@ -48,8 +48,8 @@ test-image:
 	echo "$$TESTDOCKERFILE" | docker build --force-rm -t $(TEST_IMAGE) -f - .
 
 generate:
-	#operator-sdk add api --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageRegistryAccount
-	#operator-sdk add controller --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageRegistryAccount
+	#operator-sdk add api --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageBuildEnv
+	#operator-sdk add controller --api-version=registry.mgoltzsche.github.com/v1alpha1 --kind=ImageBuildEnv
 	operator-sdk generate k8s
 	operator-sdk generate crds
 
@@ -57,7 +57,7 @@ run-e2e-tests: operatorsdk-tests-local kubectl-tests
 
 operatorsdk-tests-local:
 	kubectl create namespace $(TEST_NAMESPACE)-local
-	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE)-local --up-local; \
+	operator-sdk test local ./test/e2e --operator-namespace $(TEST_NAMESPACE)-local --up-local; \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE)-local; \
 	exit $$STATUS
@@ -67,7 +67,7 @@ operatorsdk-tests:
 	for M in service_account role role_binding operator; do \
 		echo '---'; cat deploy/operator/$${M}.yaml; \
 	done >/tmp/registryoperator-manifest-e2e.yaml
-	operator-sdk test local ./test/e2e --namespace $(TEST_NAMESPACE) --namespaced-manifest /tmp/registryoperator-manifest-e2e.yaml; \
+	operator-sdk test local ./test/e2e --operator-namespace $(TEST_NAMESPACE) --namespaced-manifest /tmp/registryoperator-manifest-e2e.yaml; \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE); \
 	exit $$STATUS

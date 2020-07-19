@@ -129,10 +129,10 @@ func (r *ReconcileImageRegistry) reconcileStatefulSet(instance *registryv1alpha1
 		if !ready {
 			condStatus = corev1.ConditionFalse
 			condMsg = fmt.Sprintf("%d/%d pods updating", updatedReplicas, replicas)
-			condReason = ReasonUpdating
+			condReason = registryv1alpha1.ReasonUpdating
 		}
 		instance.Status.Conditions.SetCondition(status.Condition{
-			Type:    ConditionReady,
+			Type:    registryv1alpha1.ConditionReady,
 			Status:  condStatus,
 			Message: condMsg,
 			Reason:  condReason,

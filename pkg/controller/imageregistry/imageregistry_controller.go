@@ -2,7 +2,7 @@ package imageregistry
 
 import (
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
-	"github.com/mgoltzsche/image-registry-operator/pkg/torequests"
+	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbac "k8s.io/api/rbac/v1"
@@ -17,7 +17,7 @@ import (
 var log = logf.Log.WithName("controller_imageregistry")
 
 const (
-	annotationImageRegistry = torequests.AnnotationToRequest("registry.mgoltzsche.github.com/imageregistry")
+	annotationImageRegistry = backrefs.AnnotationToRequest("registry.mgoltzsche.github.com/imageregistry")
 )
 
 // Add creates a new ImageRegistry Controller and adds it to the Manager. The Manager will set fields on the Controller
