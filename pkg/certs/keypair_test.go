@@ -19,10 +19,15 @@ func TestCertGen(t *testing.T) {
 	certTTL = ttl
 
 	startTime := time.Now()
+	mockTimeNow(startTime)
 	ca, err := NewSelfSignedCAKeyPair("registry.operator.fake.root")
 	require.NoError(t, err, "NewSelfSignedCA")
-	require.True(t, startTime.Add(7*time.Second).Before(ca.x509Cert.NotAfter) && startTime.Add(ttl).Add(1*time.Second).After(ca.x509Cert.NotAfter), "ca.notAfter")
-	require.False(t, ca.NeedsRenewal(), "CA needs renewal after "+startTime.Sub(time.Now()).String())
+	require.True(t, startTime.Add(8*time.Second).Before(ca.x509Cert.NotAfter) && startTime.Add(ttl).Add(time.Second).After(ca.x509Cert.NotAfter), "ca.notAfter")
+	require.False(t, ca.NeedsRenewal(), "CA shouldn't need renewal after initialization")
+	mockTimeNow(startTime.Add(6 * time.Second))
+	require.False(t, ca.NeedsRenewal(), "CA shouldn't need renewal after 6s")
+	mockTimeNow(startTime.Add(7 * time.Second))
+	require.True(t, ca.NeedsRenewal(), "CA needs renewal after 7s (TTL: 9s)")
 	parsed, err := X509KeyPair(ca.KeyPEM(), ca.CertPEM(), ca.CACertPEM())
 	require.NoError(t, err, "X509KeyPair(ca)")
 	require.NotNil(t, parsed, "X509KeyPair(ca)")
@@ -31,7 +36,10 @@ func TestCertGen(t *testing.T) {
 
 	cert, err := NewServerKeyPair([]string{"localhost"}, ca)
 	require.NoError(t, err, "NewServerKeyPair")
-	require.False(t, cert.NeedsRenewal(), "cert needs renewal")
+	mockTimeNow(startTime)
+	require.False(t, cert.NeedsRenewal(), "cert needs renewal after initialization")
+	mockTimeNow(startTime.Add(time.Second))
+	require.False(t, cert.NeedsRenewal(), "cert needs renewal after 1s")
 	svcCert, err := tls.X509KeyPair(cert.CertPEM(), cert.KeyPEM())
 	require.NoError(t, err, "tls.X509KeyPair")
 	parsed, err = X509KeyPair(cert.KeyPEM(), cert.CertPEM(), cert.CACertPEM())
@@ -64,8 +72,8 @@ func TestCertGen(t *testing.T) {
 	}
 	_, err = http.Get("http://localhost" + regexp.MustCompile(":[0-9]+$").FindString(server.URL))
 	require.NoError(t, err, "HTTP GET request on test server using TLS cert")
+}
 
-	time.Sleep(startTime.Add(ttl).Sub(time.Now()) + 3*time.Second)
-	require.True(t, ca.NeedsRenewal(), "CA needs renewal")
-	require.True(t, cert.NeedsRenewal(), "cert needs renewal")
+func mockTimeNow(now time.Time) {
+	timeNow = func() time.Time { return now }
 }

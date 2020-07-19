@@ -23,7 +23,10 @@ kubectl get ns image-registry-operator >/dev/null || ALREADY_INSTALLED=1
 	for REG in self-signed issuer; do
 		kubectl apply -k deploy/examples/registry-$REG -n ${TEST_NAMESPACE}-$REG
 		kubectl wait --for condition=ready --timeout 120s -n ${TEST_NAMESPACE}-$REG imageregistry/registry
-		[ "$CERTMAN_INSTALLED" ] || kubectl apply --validate=false -f https://github.com/jetstack/cert-manager/releases/download/v0.15.1/cert-manager.yaml
+		[ "$CERTMAN_INSTALLED" ] || (
+			kubectl apply --validate=false -f https://github.com/jetstack/cert-manager/releases/download/v0.15.1/cert-manager.yaml &&
+			kubectl wait --for condition=available -n cert-manager deploy/cert-manager-webhook apiservice/v1alpha3.cert-manager.io
+		)
 		CERTMAN_INSTALLED=1
 	done
 	for KIND in ImagePullSecret ImagePushSecret; do
@@ -67,7 +70,10 @@ kubectl get ns image-registry-operator >/dev/null || ALREADY_INSTALLED=1
 	)
 	# Test reverse resource deployment
 	kubectl apply -n ${TEST_NAMESPACE}-user -f test/deploy-build.yaml
-	kubectl wait -n ${TEST_NAMESPACE}-user imagebuildenv myapp --for condition=ready --timeout 60s
+	kubectl wait -n ${TEST_NAMESPACE}-user imagebuildenv myapp --for condition=ready --timeout 130s || (
+		kubectl describe -n ${TEST_NAMESPACE}-user imagebuildenv myapp
+		false
+	)
 )
 STATUS=$?
 echo >&2

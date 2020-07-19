@@ -122,7 +122,7 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 	if err != nil {
 		// secret not found - reconcile after one minute
 		err = r.updateStatus(instance, corev1.ConditionFalse, registryv1alpha1.ReasonMissingSecret, err.Error())
-		return reconcile.Result{RequeueAfter: time.Minute}, err
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, err
 	}
 	err = r.secretRefs.UpdateReferences(context.TODO(), &referenceOwner{instance}, secretsToObjects(secrets))
 	if err != nil {

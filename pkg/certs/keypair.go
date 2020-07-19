@@ -20,6 +20,7 @@ const (
 var (
 	caTTL   = 24 * 365 * 5 * time.Hour
 	certTTL = 24 * 90 * time.Hour
+	timeNow = func() time.Time { return time.Now() }
 )
 
 type KeyPair struct {
@@ -81,11 +82,11 @@ func (p *KeyPair) NextRenewal() time.Time {
 }
 
 func (p *KeyPair) NeedsRenewal() bool {
-	return time.Now().After(p.NextRenewal())
+	return timeNow().After(p.NextRenewal())
 }
 
 func NewSelfSignedCAKeyPair(commonName string) (*KeyPair, error) {
-	now := time.Now()
+	now := timeNow()
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(now.Unix()),
 		Subject: pkix.Name{
@@ -106,7 +107,7 @@ func NewServerKeyPair(dnsNames []string, ca *KeyPair) (*KeyPair, error) {
 	if len(dnsNames) == 0 {
 		return nil, errors.New("gen server key pair: no dns names provided")
 	}
-	now := time.Now()
+	now := timeNow()
 	cert := &x509.Certificate{
 		SerialNumber: big.NewInt(now.Unix()),
 		DNSNames:     dnsNames,
