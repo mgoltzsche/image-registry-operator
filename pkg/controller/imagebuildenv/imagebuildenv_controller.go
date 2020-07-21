@@ -32,6 +32,7 @@ const (
 	redisPort           = 6379
 	redisPortName       = "redis"
 	secretKeyConfigJson = "config.json"
+	finalizer           = "registry.mgoltzsche.github.com/inputrefs"
 )
 
 // Add creates a new ImageBuildEnv Controller and adds it to the Manager. The Manager will set fields on the Controller
@@ -117,6 +118,34 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 		return reconcile.Result{}, err
 	}
 
+	// When marked as deleted finalize object: remove back references
+	isFinalizerPresent := merge.HasFinalizer(instance, finalizer)
+	refOwner := &referenceOwner{instance}
+	if !instance.ObjectMeta.DeletionTimestamp.IsZero() {
+		if isFinalizerPresent {
+			err = r.secretRefs.UpdateReferences(context.TODO(), reqLogger, refOwner, nil)
+			if err != nil {
+				reqLogger.Error(err, "finalizer %s failed to remove input ownerReferences", finalizer)
+				return reconcile.Result{}, err
+			}
+			controllerutil.RemoveFinalizer(instance, finalizer)
+			err = r.client.Update(context.TODO(), instance)
+		}
+		return reconcile.Result{}, err
+	}
+
+	// Add finalizer
+	if !isFinalizerPresent {
+		controllerutil.AddFinalizer(instance, finalizer)
+		err := r.client.Update(context.TODO(), instance)
+		if err != nil {
+			r.updateStatus(instance, corev1.ConditionFalse, registryv1alpha1.ReasonFailedUpdate, err.Error())
+			return reconcile.Result{}, err
+		}
+		// Stop here since update triggered another reconcile request anyway
+		return reconcile.Result{}, nil
+	}
+
 	// Load referenced docker config secrets
 	secrets, err := r.loadInputSecretsForCR(instance)
 	if err != nil {
@@ -124,7 +153,7 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 		err = r.updateStatus(instance, corev1.ConditionFalse, registryv1alpha1.ReasonMissingSecret, err.Error())
 		return reconcile.Result{RequeueAfter: 30 * time.Second}, err
 	}
-	err = r.secretRefs.UpdateReferences(context.TODO(), &referenceOwner{instance}, secretsToObjects(secrets))
+	err = r.secretRefs.UpdateReferences(context.TODO(), reqLogger, refOwner, secretsToObjects(secrets))
 	if err != nil {
 		err = r.updateStatus(instance, corev1.ConditionFalse, registryv1alpha1.ReasonFailedUpdate, err.Error())
 		return reconcile.Result{}, err
@@ -296,51 +325,48 @@ func (r *ReconcileImageBuildEnv) createRedisPodForCR(cr *registryv1alpha1.ImageB
 	pod.Name = podKey.Name
 	pod.Namespace = cr.Namespace
 	pod.Labels = redisLabelsForCR(cr)
-	pod.Spec.Volumes = []corev1.Volume{
-		{
-			Name: "redis-conf",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{SecretName: pod.Name + "-conf"},
-			}},
-	}
-	pod.Spec.Containers = []corev1.Container{
-		{
-			Name:            "redis",
-			Image:           "redis:6-alpine",
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			Args:            []string{"redis-server", "/conf/redis.conf"},
-			Ports: []corev1.ContainerPort{
-				{Name: redisPortName, ContainerPort: redisPort, Protocol: corev1.ProtocolTCP},
-			},
-			Env: []corev1.EnvVar{
-				{Name: "MASTER", Value: "true"},
-			},
-			ReadinessProbe: &corev1.Probe{
-				Handler: corev1.Handler{
-					TCPSocket: &corev1.TCPSocketAction{
-						Port: intstr.IntOrString{Type: intstr.Int, IntVal: redisPort},
-					},
+	merge.AddVolume(&pod.Spec, corev1.Volume{
+		Name: "redis-conf",
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{SecretName: pod.Name + "-conf"},
+		},
+	})
+	merge.AddContainer(&pod.Spec, corev1.Container{
+		Name:            "redis",
+		Image:           "redis:6-alpine",
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Args:            []string{"redis-server", "/conf/redis.conf"},
+		Ports: []corev1.ContainerPort{
+			{Name: redisPortName, ContainerPort: redisPort, Protocol: corev1.ProtocolTCP},
+		},
+		Env: []corev1.EnvVar{
+			{Name: "MASTER", Value: "true"},
+		},
+		ReadinessProbe: &corev1.Probe{
+			Handler: corev1.Handler{
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.IntOrString{Type: intstr.Int, IntVal: redisPort},
 				},
-				InitialDelaySeconds: 3,
-				PeriodSeconds:       3,
 			},
-			LivenessProbe: &corev1.Probe{
-				Handler: corev1.Handler{
-					TCPSocket: &corev1.TCPSocketAction{
-						Port: intstr.IntOrString{Type: intstr.Int, IntVal: redisPort},
-					},
+			InitialDelaySeconds: 3,
+			PeriodSeconds:       3,
+		},
+		LivenessProbe: &corev1.Probe{
+			Handler: corev1.Handler{
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.IntOrString{Type: intstr.Int, IntVal: redisPort},
 				},
-				InitialDelaySeconds: 5,
-				PeriodSeconds:       30,
 			},
-			VolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      "redis-conf",
-					MountPath: "/conf",
-				},
+			InitialDelaySeconds: 5,
+			PeriodSeconds:       30,
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "redis-conf",
+				MountPath: "/conf",
 			},
 		},
-	}
+	})
 	err = controllerutil.SetControllerReference(cr, pod, r.scheme)
 	if err != nil {
 		return
@@ -355,7 +381,7 @@ func (r *ReconcileImageBuildEnv) upsertRedisServiceForCR(cr *registryv1alpha1.Im
 	_, err = controllerutil.CreateOrUpdate(context.TODO(), r.client, svc, func() error {
 		svc.Spec.Selector = redisLabelsForCR(cr)
 		svc.Spec.Type = corev1.ServiceTypeClusterIP
-		merge.AddPort(svc, redisPortName, redisPort, redisPort, corev1.ProtocolTCP)
+		merge.AddServicePort(svc, redisPortName, redisPort, redisPort, corev1.ProtocolTCP)
 		return controllerutil.SetControllerReference(cr, svc, r.scheme)
 	})
 	return

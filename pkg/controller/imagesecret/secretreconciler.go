@@ -11,6 +11,7 @@ import (
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
 	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imageregistry"
+	"github.com/mgoltzsche/image-registry-operator/pkg/merge"
 	"github.com/mgoltzsche/image-registry-operator/pkg/passwordgen"
 	"github.com/mgoltzsche/image-registry-operator/pkg/registriesconf"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
@@ -18,6 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -38,10 +40,11 @@ const (
 	EnvSecretTTL                = "OPERATOR_SECRET_TTL"
 	annotationSecretRotation    = "registry.mgoltzsche.github.com/rotation"
 	defaultAccountTTL           = 24 * time.Hour
+	finalizer                   = "registry.mgoltzsche.github.com/accounts"
 )
 
 // WatchSecondaryResources watches resources created or referenced by a secret CR
-func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, accountMap backrefs.AnnotationToRequest) (err error) {
+func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, accountLabel string) (err error) {
 	err = c.Watch(&source.Kind{Type: &corev1.Secret{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    ownerType,
@@ -56,7 +59,8 @@ func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, 
 	if err != nil {
 		return
 	}
-	err = c.Watch(&source.Kind{Type: &registryapi.ImageRegistryAccount{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: accountMap})
+	accountToSecret := backrefs.LabelToRequest(accountLabel)
+	err = c.Watch(&source.Kind{Type: &registryapi.ImageRegistryAccount{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: accountToSecret})
 	if err != nil {
 		return
 	}
@@ -65,11 +69,11 @@ func WatchSecondaryResources(c controller.Controller, ownerType runtime.Object, 
 
 // ReconcileImageSecretConfig image secret CR reconciler
 type ReconcileImageSecretConfig struct {
-	Intent            registryapi.ImageSecretType
-	SecretType        corev1.SecretType
-	DockerConfigKey   string
-	CRFactory         SecretResourceFactory
-	AccountAnnotation backrefs.AnnotationToRequest
+	Intent          registryapi.ImageSecretType
+	SecretType      corev1.SecretType
+	DockerConfigKey string
+	CRFactory       SecretResourceFactory
+	AccountLabel    string
 }
 
 // NewReconciler returns a new reconcile.Reconciler
@@ -144,7 +148,6 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Fetch the ImagePullSecret instance
 	instance := r.cfg.CRFactory()
-	instanceStatus := instance.GetStatus()
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -157,22 +160,43 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
+	// finalize: Delete associated ImageRegistryAccounts
+	isFinalizerPresent := merge.HasFinalizer(instance, finalizer)
+	if !instance.GetDeletionTimestamp().IsZero() {
+		if isFinalizerPresent {
+			reqLogger.Info("Finalizing")
+			registryNs := instance.GetStatus().Registry.Namespace
+			if registryNs != "" {
+				err = r.deleteOrphanAccounts(reqLogger, request.NamespacedName, registryNs)
+				if err != nil {
+					reqLogger.Error(err, "finalizer %s failed to delete accounts", finalizer)
+					return reconcile.Result{}, err
+				}
+			}
+			controllerutil.RemoveFinalizer(instance, finalizer)
+			err = r.client.Update(context.TODO(), instance)
+		}
+		return reconcile.Result{}, err
+	}
+
+	// Add finalizer
+	if !isFinalizerPresent {
+		controllerutil.AddFinalizer(instance, finalizer)
+		err := r.client.Update(context.TODO(), instance)
+		if err != nil {
+			r.setSyncStatus(instance, registryapi.ConditionSynced, corev1.ConditionFalse, registryapi.ReasonFailedUpdate, err.Error())
+			return reconcile.Result{}, err
+		}
+		// Stop here since update triggered another reconcile request anyway
+		return reconcile.Result{}, nil
+	}
+
 	// Fetch the registry
 	registry, err := r.getRegistry(r.getRegistryKeyForCR(instance))
 	if err != nil {
-		if instanceStatus.Conditions.SetCondition(status.Condition{
-			Type:    registryapi.ConditionReady,
-			Status:  corev1.ConditionFalse,
-			Reason:  registryapi.ReasonRegistryUnavailable,
-			Message: err.Error(),
-		}) {
-			r.client.Status().Update(context.TODO(), instance)
-		}
-		if errors.IsNotFound(err) {
-			// Reconcile after one minute when registry does not exist (yet)
-			return reconcile.Result{RequeueAfter: time.Minute}, nil
-		}
-		return reconcile.Result{}, err
+		err = r.setSyncStatus(instance, registryapi.ConditionReady, corev1.ConditionFalse, registryapi.ReasonRegistryUnavailable, err.Error())
+		// Reconcile delayed when registry does not exist (yet)
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
 	// Fetch ImageRegistryAccount
@@ -195,35 +219,49 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 
 	// Update ImageRegistryAccount & Secret
 	hostnameCaChanged := string(secret.Data[registryapi.SecretKeyRegistry]) != registry.Hostname || string(secret.Data["ca.crt"]) != string(registry.CA)
+	now := time.Now()
 	needsRenewal := time.Now().Sub(account.CreationTimestamp.Time) > r.rotationInterval
 	secretOutOfSync := secret.Annotations == nil || secret.Annotations[annotationSecretRotation] != strconv.FormatInt(instance.GetStatus().Rotation, 10)
 	if !accountExists || !secretExists || secretOutOfSync || needsRenewal || hostnameCaChanged {
 		err = r.rotatePassword(instance, registry, secret, reqLogger)
 		if err != nil {
-			if instanceStatus.Conditions.SetCondition(status.Condition{
-				Type:    registryapi.ConditionReady,
-				Status:  corev1.ConditionFalse,
-				Reason:  registryapi.ReasonFailedSync,
-				Message: err.Error(),
-			}) {
-				r.client.Status().Update(context.TODO(), instance)
-			}
+			err = r.setSyncStatus(instance, registryapi.ConditionReady, corev1.ConditionFalse, registryapi.ReasonFailedSync, err.Error())
 			return reconcile.Result{}, err
 		}
 	}
 
-	if instanceStatus.Conditions.SetCondition(status.Condition{
-		Type:   registryapi.ConditionReady,
-		Status: corev1.ConditionTrue,
-	}) {
-		err = r.client.Status().Update(context.TODO(), instance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	err = r.setSyncStatus(instance, registryapi.ConditionReady, corev1.ConditionTrue, "", "")
+	if err != nil {
+		return reconcile.Result{}, err
 	}
 
-	// Secret & CR are up-to-date and untouched - schedule next renewal check
-	return reconcile.Result{RequeueAfter: 5 * time.Minute}, nil
+	// CR, account and secret are up-to-date - schedule next renewal check
+	renewalTTL := account.CreationTimestamp.Time.Add(r.rotationInterval).Sub(now) + 30*time.Second
+	return reconcile.Result{RequeueAfter: renewalTTL}, nil
+}
+
+func (r *ReconcileImageSecret) setSyncStatus(cr registryapi.ImageSecretInterface, ctype status.ConditionType, s corev1.ConditionStatus, reason status.ConditionReason, msg string) error {
+	syncCond := status.Condition{
+		Type:    ctype,
+		Status:  s,
+		Reason:  reason,
+		Message: msg,
+	}
+	st := cr.GetStatus()
+	generation := cr.GetGeneration()
+	if st.Conditions.SetCondition(syncCond) ||
+		st.ObservedGeneration != generation {
+		st.ObservedGeneration = generation
+		return r.client.Status().Update(context.TODO(), cr)
+	}
+	return nil
+}
+
+func (r *ReconcileImageSecret) deleteOrphanAccounts(reqLogger logr.Logger, name types.NamespacedName, registryNamespace string) error {
+	opts := client.DeleteAllOfOptions{}
+	opts.LabelSelector = labels.SelectorFromSet(map[string]string{r.cfg.AccountLabel: name.String()})
+	opts.Namespace = registryNamespace
+	return r.client.DeleteAllOf(context.TODO(), &registryapi.ImageRegistryAccount{}, &opts)
 }
 
 func (r *ReconcileImageSecret) get(ctx context.Context, obj runtime.Object) (bool, error) {
@@ -245,11 +283,19 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 		return
 	}
 
+	// Delete old registry account if any associated
+	lastRegistryNs := instance.GetStatus().Registry.Namespace
+	if lastRegistryNs != "" && lastRegistryNs != registry.Namespace {
+		key := types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()}
+		err = r.deleteOrphanAccounts(reqLogger, key, lastRegistryNs)
+	}
+
 	// Increment CR rotation count.
 	// This must happen before account and secret are written to avoid
 	// replacing an existing account - handling accounts immutable.
 	instance.GetStatus().Rotation++
 	instance.GetStatus().RotationDate = &metav1.Time{time.Now()}
+	instance.GetStatus().Registry.Namespace = registry.Namespace
 	if err = r.client.Status().Update(context.TODO(), instance); err != nil {
 		return
 	}
@@ -257,7 +303,7 @@ func (r *ReconcileImageSecret) rotatePassword(instance registryapi.ImageSecretIn
 	account := &registryapi.ImageRegistryAccount{}
 	account.Name = accountNameForCR(instance)
 	account.Namespace = registry.Namespace
-	account.Annotations = map[string]string{string(r.cfg.AccountAnnotation): crName.String()}
+	account.Labels = map[string]string{r.cfg.AccountLabel: backrefs.ToMapValue(crName)}
 	account.Spec.TTL = &metav1.Duration{r.accountTTL}
 	account.Spec.Password = string(newPasswordHash)
 	account.Spec.Labels = map[string][]string{

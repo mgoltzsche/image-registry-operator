@@ -12,7 +12,7 @@ import (
 )
 
 func testImageRegistryAccountAuth(t *testing.T, ctx *framework.Context) {
-	f := framework.Global
+	ns := framework.Global.Namespace
 	user := "push.user.ns"
 	pw := "fake-password"
 	pwHash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
@@ -25,18 +25,19 @@ func testImageRegistryAccountAuth(t *testing.T, ctx *framework.Context) {
 	}
 	cr := &registryapi.ImageRegistryAccount{}
 	cr.Name = user
-	cr.Namespace = f.Namespace
+	cr.Namespace = ns
 	cr.Spec.Password = string(pwHash)
 	cr.Spec.Labels = labels
-	err = f.Client.Create(context.TODO(), cr, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
+	c := framework.Global.Client
+	err = c.Create(context.TODO(), cr, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
 	require.NoError(t, err, "create ImageRegistryAccount")
 	labels["origin"] = []string{"cr"}
 	labels["account"] = []string{user}
 
 	t.Run("authn CLI", func(t *testing.T) {
-		testAuthentication(t, cr.Namespace, user, pw, labels, runAuthnCLI)
+		testAuthentication(t, ctx, cr.Namespace, user, pw, labels, runAuthnCLI)
 	})
 	t.Run("authn plugin", func(t *testing.T) {
-		testAuthentication(t, cr.Namespace, user, pw, labels, runAuthnPlugin)
+		testAuthentication(t, ctx, cr.Namespace, user, pw, labels, runAuthnPlugin)
 	})
 }

@@ -25,13 +25,12 @@ func testImageBuildEnvs(t *testing.T, ctx *framework.Context, secretName string)
 
 func testImageBuildEnv(t *testing.T, ctx *framework.Context, redis bool, secretName string) {
 	inputDockerConf, inputRegistry := loadInputSecret(t, ctx, secretName)
-
 	f := framework.Global
-	namespace := f.Namespace
+	ns := f.Namespace
 
 	cr := &operator.ImageBuildEnv{}
 	cr.Name = "test-buildenv-" + strconv.FormatBool(redis)
-	cr.Namespace = namespace
+	cr.Namespace = ns
 	cr.Spec.Redis = redis
 	cr.Spec.Secrets = []operator.ImageSecretRef{
 		{SecretName: secretName},
@@ -80,8 +79,9 @@ func testImageBuildEnv(t *testing.T, ctx *framework.Context, redis bool, secretN
 }
 
 func loadInputSecret(t *testing.T, ctx *framework.Context, secretName string) (dockerConf *registriesconf.DockerConfig, registry string) {
+	ns := framework.Global.Namespace
 	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{Name: secretName, Namespace: framework.Global.Namespace}
+	secretKey := types.NamespacedName{Name: secretName, Namespace: ns}
 	err := framework.Global.Client.Get(context.TODO(), secretKey, secret)
 	require.NoError(t, err, "load input secret")
 	require.NotNil(t, secret.Data, "input secret data")

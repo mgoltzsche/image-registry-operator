@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 
 	"github.com/go-logr/logr"
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
@@ -170,7 +171,7 @@ type namespacedObject interface {
 }
 
 func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, obj namespacedObject, reqLogger logr.Logger, modify func() error) (err error) {
-	_, err = controllerutil.CreateOrUpdate(context.TODO(), r.client, obj, func() (e error) {
+	result, err := controllerutil.CreateOrUpdate(context.TODO(), r.client, obj, func() (e error) {
 		if obj.GetAnnotations() == nil {
 			obj.SetAnnotations(map[string]string{})
 		}
@@ -185,7 +186,19 @@ func (r *ReconcileImageRegistry) upsert(owner *registryv1alpha1.ImageRegistry, o
 	if err != nil {
 		err = fmt.Errorf("upsert %s %s: %w", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName(), err)
 	}
+	switch result {
+	case controllerutil.OperationResultCreated:
+		logOperation(reqLogger, "Created", obj)
+	case controllerutil.OperationResultUpdated:
+		logOperation(reqLogger, "Updated", obj)
+	}
 	return
+}
+
+func logOperation(log logr.Logger, verb string, o metav1.Object) {
+	kind := reflect.TypeOf(o).Elem().Name()
+	msg := fmt.Sprintf("%s %s", verb, kind)
+	log.Info(msg, kind+".Namespace", o.GetNamespace(), kind+".Name", o.GetName())
 }
 
 func (r *ReconcileImageRegistry) externalHostnameForCR(cr *registryv1alpha1.ImageRegistry) string {

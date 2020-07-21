@@ -8,7 +8,7 @@ import (
 	"runtime"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	//_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	certmgr "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha3"
 	"github.com/mgoltzsche/image-registry-operator/pkg/apis"

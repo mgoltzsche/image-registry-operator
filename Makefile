@@ -57,7 +57,8 @@ run-e2e-tests: operatorsdk-tests-local kubectl-tests
 
 operatorsdk-tests-local:
 	kubectl create namespace $(TEST_NAMESPACE)-local
-	operator-sdk test local ./test/e2e --operator-namespace $(TEST_NAMESPACE)-local --up-local; \
+	# TODO: fix test namespace
+	operator-sdk test local ./test/e2e --up-local --operator-namespace $(TEST_NAMESPACE)-local; \
 	STATUS=$$?; \
 	kubectl delete namespace $(TEST_NAMESPACE)-local; \
 	exit $$STATUS

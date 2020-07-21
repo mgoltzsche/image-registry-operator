@@ -17,8 +17,10 @@ import (
 var log = logf.Log.WithName("controller_imageregistry")
 
 const (
-	annotationImageRegistry = backrefs.AnnotationToRequest("registry.mgoltzsche.github.com/imageregistry")
+	annotationImageRegistry = "registry.mgoltzsche.github.com/imageregistry"
 )
+
+var pvcAnnotationToRequest = backrefs.AnnotationToRequest(annotationImageRegistry)
 
 // Add creates a new ImageRegistry Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -68,7 +70,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to secondary resource PersistentVolumeClaim and requeue the owner ImageRegistry
-	err = c.Watch(&source.Kind{Type: &corev1.PersistentVolumeClaim{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: annotationImageRegistry})
+	err = c.Watch(&source.Kind{Type: &corev1.PersistentVolumeClaim{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: pvcAnnotationToRequest})
 	if err != nil {
 		return err
 	}

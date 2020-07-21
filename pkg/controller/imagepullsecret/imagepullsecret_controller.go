@@ -2,7 +2,6 @@ package imagepullsecret
 
 import (
 	registryapi "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
-	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	"github.com/mgoltzsche/image-registry-operator/pkg/controller/imagesecret"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -14,17 +13,17 @@ import (
 
 var log = logf.Log.WithName("controller_imagepullsecret")
 
-const pullAccountAnnotation = backrefs.AnnotationToRequest("registry.mgoltzsche.github.com/imagepullsecret")
+const pullAccountLabel = "registry.mgoltzsche.github.com/imagepullsecret"
 
 // Add creates a new ImagePullSecret Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
 	r := imagesecret.NewReconciler(mgr, log, imagesecret.ReconcileImageSecretConfig{
-		CRFactory:         func() registryapi.ImageSecretInterface { return &registryapi.ImagePullSecret{} },
-		Intent:            registryapi.TypePull,
-		SecretType:        corev1.SecretTypeDockerConfigJson,
-		DockerConfigKey:   corev1.DockerConfigJsonKey,
-		AccountAnnotation: pullAccountAnnotation,
+		CRFactory:       func() registryapi.ImageSecretInterface { return &registryapi.ImagePullSecret{} },
+		Intent:          registryapi.TypePull,
+		SecretType:      corev1.SecretTypeDockerConfigJson,
+		DockerConfigKey: corev1.DockerConfigJsonKey,
+		AccountLabel:    pullAccountLabel,
 	})
 
 	c, err := controller.New("imagepullsecret-controller", mgr, controller.Options{Reconciler: r})
@@ -37,5 +36,5 @@ func Add(mgr manager.Manager) error {
 		return err
 	}
 
-	return imagesecret.WatchSecondaryResources(c, &registryapi.ImagePullSecret{}, pullAccountAnnotation)
+	return imagesecret.WatchSecondaryResources(c, &registryapi.ImagePullSecret{}, pullAccountLabel)
 }

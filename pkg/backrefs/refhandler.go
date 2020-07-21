@@ -5,7 +5,9 @@ package backrefs
 import (
 	"context"
 	"fmt"
+	"reflect"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,11 +48,11 @@ func NewBackReferencesHandler(client client.Client, backrefs BackReferenceStrate
 }
 
 // UpdateReferences updates back references from other objects to the owner consistently
-func (h *BackReferencesHandler) UpdateReferences(ctx context.Context, owner Owner, refs []Object) (err error) {
+func (h *BackReferencesHandler) UpdateReferences(ctx context.Context, logger logr.InfoLogger, owner Owner, refs []Object) (err error) {
 	lastRefs := owner.GetStatusReferences()
 	delRefs, addRefs := diffRefs(lastRefs, refs)
 	// Delete backreferences on previously referenced resources
-	err = h.deleteOldRefs(ctx, owner.GetObject(), delRefs)
+	err = h.deleteOldRefs(ctx, logger, owner.GetObject(), delRefs)
 	if err != nil {
 		return
 	}
@@ -64,13 +66,15 @@ func (h *BackReferencesHandler) UpdateReferences(ctx context.Context, owner Owne
 		}
 	}
 	// Set backreferences on referenced resources (to watch them)
-	err = h.addNewRefs(ctx, owner.GetObject(), refs)
+	err = h.addNewRefs(ctx, logger, owner.GetObject(), refs)
 	return
 }
 
-func (h *BackReferencesHandler) addNewRefs(ctx context.Context, owner Object, newRefs []Object) error {
+func (h *BackReferencesHandler) addNewRefs(ctx context.Context, logger logr.InfoLogger, owner Object, newRefs []Object) error {
 	for _, ref := range newRefs {
 		if h.backRefs.AddReference(ref, owner) {
+			kind := reflect.TypeOf(ref).Elem().Name()
+			logger.Info("Adding back reference to "+kind, kind+".Name", ref.GetName(), kind+".Namespace", ref.GetNamespace())
 			if err := h.client.Update(ctx, ref); err != nil {
 				return err
 			}
@@ -79,7 +83,7 @@ func (h *BackReferencesHandler) addNewRefs(ctx context.Context, owner Object, ne
 	return nil
 }
 
-func (h *BackReferencesHandler) deleteOldRefs(ctx context.Context, owner Object, oldRefs []Object) error {
+func (h *BackReferencesHandler) deleteOldRefs(ctx context.Context, logger logr.InfoLogger, owner Object, oldRefs []Object) error {
 	for _, ref := range oldRefs {
 		key := types.NamespacedName{Name: ref.GetName(), Namespace: ref.GetNamespace()}
 		err := h.client.Get(ctx, key, ref)
@@ -91,6 +95,8 @@ func (h *BackReferencesHandler) deleteOldRefs(ctx context.Context, owner Object,
 			}
 		}
 		if h.backRefs.DelReference(ref, owner) {
+			kind := reflect.TypeOf(ref).Elem().Name()
+			logger.Info("Removing back reference from "+kind, kind+".Name", ref.GetName(), kind+".Namespace", ref.GetNamespace())
 			if err = h.client.Update(ctx, ref); err != nil && !errors.IsNotFound(err) {
 				return err
 			}

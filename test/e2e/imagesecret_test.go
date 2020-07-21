@@ -14,32 +14,34 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 )
 
 type ImageSecretTestCase struct {
-	CR              operator.ImageSecretInterface
+	CRFactory       func() operator.ImageSecretInterface
 	AccessMode      operator.ImageSecretType
 	SecretType      corev1.SecretType
 	DockerConfigKey string
 	ExpectHostname  string
 }
 
-func (c *ImageSecretTestCase) SecretName() string {
-	return fmt.Sprintf("image%ssecret-%s", c.AccessMode, c.CR.GetName())
+func (c *ImageSecretTestCase) SecretName(cr operator.ImageSecretInterface) string {
+	return fmt.Sprintf("image%ssecret-%s", c.AccessMode, cr.GetName())
 }
 
 func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase) {
-	f := framework.Global
-	registryNamespace := c.CR.GetRegistryRef().Namespace
+	ns := framework.Global.Namespace
+	registryNamespace := ns
 
 	// Test secret creation
-	secretCR := c.CR
-	secretCR.SetNamespace(f.Namespace)
-	err := f.Client.Create(context.TODO(), secretCR, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
+	secretCR := c.CRFactory()
+	secretCR.SetNamespace(ns)
+	client := framework.Global.Client
+	err := client.Create(context.TODO(), secretCR, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
 	require.NoError(t, err, "create CR")
-	acc, usr, pw := waitForSecretUpdateAndAssert(t, c)
-	require.Equal(t, int64(1), c.CR.GetStatus().Rotation, "rotation after first account created")
+	acc, usr, pw := waitForSecretUpdateAndAssert(t, c, secretCR)
+	require.Equal(t, int64(1), secretCR.GetStatus().Rotation, "rotation after first account created")
 	expectedLabels := map[string][]string{
 		"origin":  []string{"cr"},
 		"account": []string{acc.Name},
@@ -49,44 +51,65 @@ func testImageSecret(t *testing.T, ctx *framework.Context, c ImageSecretTestCase
 	}
 
 	t.Run("authn CLI", func(t *testing.T) {
-		testAuthentication(t, registryNamespace, usr, pw, expectedLabels, runAuthnCLI)
+		testAuthentication(t, ctx, registryNamespace, usr, pw, expectedLabels, runAuthnCLI)
 	})
 	t.Run("authn plugin", func(t *testing.T) {
-		testAuthentication(t, registryNamespace, usr, pw, expectedLabels, runAuthnPlugin)
+		testAuthentication(t, ctx, registryNamespace, usr, pw, expectedLabels, runAuthnPlugin)
 	})
 
 	t.Run("credential rotation", func(t *testing.T) {
 		for i := 0; i < 2; i++ {
-			triggerCredentialRotation(t, c)
-			waitForSecretUpdateAndAssert(t, c)
+			triggerCredentialRotation(t, secretCR, c.SecretName(secretCR))
+			waitForSecretUpdateAndAssert(t, c, secretCR)
 		}
 		t.Run("plugin authn after rotation", func(t *testing.T) {
-			testAuthentication(t, registryNamespace, usr, pw, expectedLabels, runAuthnPlugin)
+			testAuthentication(t, ctx, registryNamespace, usr, pw, expectedLabels, runAuthnPlugin)
 		})
+	})
+
+	t.Run("delete account when secret deleted", func(t *testing.T) {
+		secretCR := c.CRFactory()
+		secretCR.SetName(secretCR.GetName() + "-delete")
+		secretCR.SetNamespace(ns)
+		client := framework.Global.Client
+		err := client.Create(context.TODO(), secretCR, &framework.CleanupOptions{TestContext: ctx, Timeout: time.Second * 5, RetryInterval: time.Second * 1})
+		require.NoError(t, err, "create CR")
+		acc, _, _ := waitForSecretUpdateAndAssert(t, c, secretCR)
+		err = client.Delete(context.TODO(), secretCR)
+		require.NoError(t, err, "delete CR")
+		err = WaitForCondition(t, secretCR, 10*time.Second, func() []string {
+			return []string{"deletion"}
+		})
+		require.Error(t, err, "should be deleted")
+		require.True(t, errors.IsNotFound(err), "should be not found error after deletion but was %s", err)
+		accKey := types.NamespacedName{Name: acc.Name, Namespace: acc.Namespace}
+		_ = client.Get(context.TODO(), accKey, acc)
+		err = client.Get(context.TODO(), accKey, acc)
+		require.Error(t, err, "account should not exist anymore after CR has been deleted")
+		require.True(t, errors.IsNotFound(err), "account should not exist after deletion but client.Get() returned error %s", err)
 	})
 }
 
-func triggerCredentialRotation(t *testing.T, c ImageSecretTestCase) {
+func triggerCredentialRotation(t *testing.T, cr operator.ImageSecretInterface, secretName string) {
 	t.Log("triggering account rotation...")
 	client := framework.Global.Client
 	secret := &corev1.Secret{}
-	key := types.NamespacedName{Name: c.SecretName(), Namespace: c.CR.GetNamespace()}
+	key := types.NamespacedName{Name: secretName, Namespace: cr.GetNamespace()}
 	err := client.Get(context.TODO(), key, secret)
-	require.NoError(t, err, "get secret for %s to trigger account rotation", c.CR.GetName())
+	require.NoError(t, err, "get secret for %s to trigger account rotation", cr.GetName())
 	secret.Annotations = map[string]string{"someannotation": "someval"}
 	err = client.Update(context.TODO(), secret)
 	require.NoError(t, err, "update secret to trigger account rotation")
 }
 
-func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account *operator.ImageRegistryAccount, usr, pw string) {
-	secretCR := c.CR
+func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase, secretCR operator.ImageSecretInterface) (account *operator.ImageRegistryAccount, usr, pw string) {
 	ns := secretCR.GetNamespace()
 	status := secretCR.GetStatus()
 	rotation := status.Rotation
 	secret := &corev1.Secret{}
-	secretKey := types.NamespacedName{Name: c.SecretName(), Namespace: ns}
+	secretKey := types.NamespacedName{Name: c.SecretName(secretCR), Namespace: ns}
 	account = &operator.ImageRegistryAccount{}
-	accKey := types.NamespacedName{Namespace: c.CR.GetNamespace()}
+	accKey := types.NamespacedName{Namespace: secretCR.GetNamespace()}
 	err := WaitForCondition(t, secretCR, 10*time.Second, func() (pending []string) {
 		if !status.Conditions.IsTrueFor("Ready") {
 			cond := status.Conditions.GetCondition("Ready")
@@ -103,7 +126,7 @@ func waitForSecretUpdateAndAssert(t *testing.T, c ImageSecretTestCase) (account 
 		}
 
 		// Fetch account
-		accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, c.CR.GetNamespace(), c.CR.GetName(), status.Rotation)
+		accKey.Name = fmt.Sprintf("%s.%s.%s.%d", c.AccessMode, secretCR.GetNamespace(), secretCR.GetName(), status.Rotation)
 		if e := framework.Global.Client.Get(context.TODO(), accKey, account); e != nil {
 			pending = append(pending, "account: "+e.Error())
 			return

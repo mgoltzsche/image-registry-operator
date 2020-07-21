@@ -22,8 +22,9 @@ func WaitForCondition(t *testing.T, obj runtime.Object, pollTimeout time.Duratio
 	t.Logf("waiting up to %v for %s condition...", pollTimeout, key.Name)
 	err = wait.PollImmediate(time.Second, pollTimeout, func() (bool, error) {
 		if e := framework.Global.Client.Get(context.TODO(), key, obj); e != nil {
-			t.Logf("%s not found: %s", key, e)
-			return false, nil
+			//t.Logf("%s not found: %s", key, e)
+			//return false, nil
+			return false, e
 		}
 		if c := condition(); len(c) > 0 {
 			t.Logf("  %s did not meet condition: %v", key, c)
@@ -34,7 +35,7 @@ func WaitForCondition(t *testing.T, obj runtime.Object, pollTimeout time.Duratio
 	})
 	if err != nil {
 		t.Logf("  ERROR: %s. printing events...", err)
-		printEvents(t, framework.Global.Namespace)
+		printEvents(t, key.Namespace)
 	}
 	return
 }

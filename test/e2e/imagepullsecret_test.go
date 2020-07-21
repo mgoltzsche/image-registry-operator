@@ -9,17 +9,19 @@ import (
 )
 
 func testImagePullSecret(t *testing.T, ctx *framework.Context, registryRef *operator.ImageRegistryRef, hostname string) (secretName string) {
-	cr := &operator.ImagePullSecret{}
-	cr.Spec.RegistryRef = registryRef
-	cr.SetName("my-pull-secret-cr")
 	c := ImageSecretTestCase{
-		CR:              cr,
+		CRFactory: func() operator.ImageSecretInterface {
+			cr := &operator.ImagePullSecret{}
+			cr.Spec.RegistryRef = registryRef
+			cr.SetName("my-pull-secret-cr")
+			return cr
+		},
 		AccessMode:      operator.TypePull,
 		SecretType:      corev1.SecretTypeDockerConfigJson,
 		DockerConfigKey: corev1.DockerConfigJsonKey,
 		ExpectHostname:  hostname,
 	}
 	testImageSecret(t, ctx, c)
-	secretName = c.SecretName()
+	secretName = c.SecretName(c.CRFactory())
 	return
 }

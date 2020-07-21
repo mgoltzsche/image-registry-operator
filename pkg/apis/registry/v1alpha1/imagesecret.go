@@ -57,8 +57,16 @@ type ImageRegistryRef struct {
 type ImageSecretStatus struct {
 	// Conditions represent the latest available observations of an object's state
 	Conditions status.Conditions `json:"conditions,omitempty"`
+	// ObservedGeneration is the spec's generation the operator has seen
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Date on which the latest password has been generated.
 	RotationDate *metav1.Time `json:"rotationDate,omitempty"`
 	// Password rotation amount.
-	Rotation int64 `json:"rotation,omitempty"`
+	Rotation int64                     `json:"rotation,omitempty"`
+	Registry ImageSecretStatusRegistry `json:"registry,omitempty"`
+}
+
+// ImageSecretStatusRegistry specifies the last observed registry reference
+type ImageSecretStatusRegistry struct {
+	Namespace string `json:"namespace,omitempty"`
 }

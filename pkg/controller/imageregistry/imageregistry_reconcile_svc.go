@@ -6,12 +6,14 @@ import (
 
 	"github.com/go-logr/logr"
 	registryv1alpha1 "github.com/mgoltzsche/image-registry-operator/pkg/apis/registry/v1alpha1"
+	"github.com/mgoltzsche/image-registry-operator/pkg/backrefs"
 	"github.com/mgoltzsche/image-registry-operator/pkg/merge"
 	"github.com/operator-framework/operator-sdk/pkg/status"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -35,7 +37,7 @@ func (r *ReconcileImageRegistry) reconcileService(instance *registryv1alpha1.Ima
 		svc.Annotations[annotationExternalDnsHostname] = externalHostname
 		svc.Spec.Selector = selectorLabelsForCR(instance)
 		svc.Spec.Type = corev1.ServiceTypeLoadBalancer
-		merge.AddPort(svc, publicPortName, publicPortNginx, internalPortNginx, corev1.ProtocolTCP)
+		merge.AddServicePort(svc, publicPortName, publicPortNginx, internalPortNginx, corev1.ProtocolTCP)
 		return nil
 	})
 }
@@ -89,7 +91,7 @@ func (r *ReconcileImageRegistry) reconcilePersistentVolumeClaim(instance *regist
 		if a == nil {
 			a = map[string]string{}
 		}
-		a[string(annotationImageRegistry)] = fmt.Sprintf("%s/%s", instance.GetNamespace(), instance.GetName())
+		a[string(annotationImageRegistry)] = backrefs.ToMapValue(types.NamespacedName{Name: instance.GetName(), Namespace: instance.GetNamespace()})
 		pvc.SetAnnotations(a)
 		return nil
 	})
@@ -154,6 +156,19 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 	if cr.Spec.Replicas != nil {
 		replicas = *cr.Spec.Replicas
 	}
+	spec := &statefulSet.Spec
+	spec.Replicas = &replicas
+	spec.ServiceName = serviceNameForCR(cr)
+	spec.UpdateStrategy = appsv1.StatefulSetUpdateStrategy{
+		Type: appsv1.RollingUpdateStatefulSetStrategyType,
+	}
+	spec.Selector = &metav1.LabelSelector{
+		MatchLabels: labels,
+	}
+	spec.Template.Labels = labels
+	podSpec := &statefulSet.Spec.Template.Spec
+	podSpec.ServiceAccountName = serviceAccountNameForCR(cr)
+	podSpec.RestartPolicy = corev1.RestartPolicyAlways
 	volumes := []corev1.Volume{
 		{
 			Name: "images",
@@ -176,8 +191,8 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 	authVolumeMounts := []corev1.VolumeMount{
 		{Name: "registry-auth-token-ca", MountPath: "/config/auth-cert"},
 	}
+	authConfigMapVol := "auth-config"
 	if cr.Spec.Auth.ConfigMapName != nil {
-		authConfigMapVol := "auth-config"
 		volumes = append(volumes, corev1.Volume{
 			Name: authConfigMapVol,
 			VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -187,110 +202,91 @@ func (r *ReconcileImageRegistry) updateStatefulSetForCR(cr *registryv1alpha1.Ima
 		authVolumeMounts = append(authVolumeMounts,
 			corev1.VolumeMount{Name: authConfigMapVol, MountPath: "/config"})
 	}
-	statefulSet.Spec = appsv1.StatefulSetSpec{
-		Replicas:    &replicas,
-		ServiceName: serviceNameForCR(cr),
-		UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
-			Type: appsv1.RollingUpdateStatefulSetStrategyType,
-		},
-		Selector: &metav1.LabelSelector{
-			MatchLabels: labels,
-		},
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: labels,
+	podSpec.Volumes = volumes
+	podSpec.Containers = []corev1.Container{
+		{
+			Name:            "registry",
+			Image:           r.imageRegistry,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Ports: []corev1.ContainerPort{
+				{Name: "docker", ContainerPort: internalPortRegistry, Protocol: corev1.ProtocolTCP},
 			},
-			Spec: corev1.PodSpec{
-				ServiceAccountName: serviceAccountNameForCR(cr),
-				RestartPolicy:      corev1.RestartPolicyAlways,
-				Volumes:            volumes,
-				Containers: []corev1.Container{
-					{
-						Name:            "registry",
-						Image:           r.imageRegistry,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Ports: []corev1.ContainerPort{
-							{Name: "docker", ContainerPort: internalPortRegistry, Protocol: corev1.ProtocolTCP},
-						},
-						Env: []corev1.EnvVar{
-							{Name: "REGISTRY_HTTP_ADDR", Value: fmt.Sprintf(":%d", internalPortRegistry)},
-							{Name: "REGISTRY_HTTP_HOST", Value: externalURL},
-							{Name: "REGISTRY_HTTP_RELATIVEURLS", Value: "true"},
-							{Name: "REGISTRY_STORAGE_DELETE_ENABLED", Value: "true"},
-							{Name: "REGISTRY_AUTH", Value: "token"},
-							{Name: "REGISTRY_AUTH_TOKEN_REALM", Value: externalURL + "/auth/token"},
-							{Name: "REGISTRY_AUTH_TOKEN_AUTOREDIRECT", Value: "true"},
-							{Name: "REGISTRY_AUTH_TOKEN_ISSUER", Value: authIssuerName},
-							{Name: "REGISTRY_AUTH_TOKEN_SERVICE", Value: fmt.Sprintf("Docker Registry %s", extHostname)},
-							{Name: "REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE", Value: "/root/auth-cert/ca.crt"},
-						},
-						VolumeMounts: []corev1.VolumeMount{
-							{Name: "images", MountPath: "/var/lib/registry"},
-							{Name: "registry-auth-token-ca", MountPath: "/root/auth-cert"},
-						},
-						ReadinessProbe: httpProbe(internalPortRegistry, "/"),
-						LivenessProbe:  httpProbe(internalPortRegistry, "/"),
-						Resources: corev1.ResourceRequirements{
-							Limits: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
-							},
-							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
-							},
-						},
-					},
-					{
-						Name:            "auth",
-						Image:           r.imageAuth,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Env: []corev1.EnvVar{
-							{Name: "NAMESPACE", Value: cr.GetNamespace()},
-							{Name: "AUTH_SERVER_ADDR", Value: fmt.Sprintf(":%d", internalPortAuth)},
-							{Name: "AUTH_TOKEN_ISSUER", Value: authIssuerName},
-						},
-						VolumeMounts: authVolumeMounts,
-						Ports: []corev1.ContainerPort{
-							{Name: "auth", ContainerPort: internalPortAuth, Protocol: corev1.ProtocolTCP},
-						},
-						ReadinessProbe: httpProbe(internalPortAuth, "/"),
-						LivenessProbe:  httpProbe(internalPortAuth, "/"),
-						Resources: corev1.ResourceRequirements{
-							Limits: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceCPU:    resource.MustParse("200m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
-							},
-							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("64Mi"),
-							},
-						},
-					},
-					{
-						Name:            "nginx",
-						Image:           r.imageNginx,
-						ImagePullPolicy: corev1.PullIfNotPresent,
-						Ports: []corev1.ContainerPort{
-							{Name: "https", ContainerPort: internalPortNginx, Protocol: corev1.ProtocolTCP},
-							{Name: "http", ContainerPort: 8080, Protocol: corev1.ProtocolTCP},
-						},
-						VolumeMounts: []corev1.VolumeMount{
-							{Name: "tls", MountPath: "/etc/nginx/tls"},
-						},
-						ReadinessProbe: httpProbe(8080, "/health"),
-						LivenessProbe:  httpProbe(8080, "/health"),
-						Resources: corev1.ResourceRequirements{
-							Limits: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceCPU:    resource.MustParse("200m"),
-								corev1.ResourceMemory: resource.MustParse("128Mi"),
-							},
-							Requests: map[corev1.ResourceName]resource.Quantity{
-								corev1.ResourceCPU:    resource.MustParse("100m"),
-								corev1.ResourceMemory: resource.MustParse("64Mi"),
-							},
-						},
-					},
+			Env: []corev1.EnvVar{
+				{Name: "REGISTRY_HTTP_ADDR", Value: fmt.Sprintf(":%d", internalPortRegistry)},
+				{Name: "REGISTRY_HTTP_HOST", Value: externalURL},
+				{Name: "REGISTRY_HTTP_RELATIVEURLS", Value: "true"},
+				{Name: "REGISTRY_STORAGE_DELETE_ENABLED", Value: "true"},
+				{Name: "REGISTRY_AUTH", Value: "token"},
+				{Name: "REGISTRY_AUTH_TOKEN_REALM", Value: externalURL + "/auth/token"},
+				{Name: "REGISTRY_AUTH_TOKEN_AUTOREDIRECT", Value: "true"},
+				{Name: "REGISTRY_AUTH_TOKEN_ISSUER", Value: authIssuerName},
+				{Name: "REGISTRY_AUTH_TOKEN_SERVICE", Value: fmt.Sprintf("Docker Registry %s", extHostname)},
+				{Name: "REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE", Value: "/root/auth-cert/ca.crt"},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "images", MountPath: "/var/lib/registry"},
+				{Name: "registry-auth-token-ca", MountPath: "/root/auth-cert"},
+			},
+			ReadinessProbe: httpProbe(internalPortRegistry, "/"),
+			LivenessProbe:  httpProbe(internalPortRegistry, "/"),
+			Resources: corev1.ResourceRequirements{
+				Limits: map[corev1.ResourceName]resource.Quantity{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Requests: map[corev1.ResourceName]resource.Quantity{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+			},
+		},
+		{
+			Name:            "auth",
+			Image:           r.imageAuth,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Env: []corev1.EnvVar{
+				{Name: "NAMESPACE", Value: cr.GetNamespace()},
+				{Name: "AUTH_SERVER_ADDR", Value: fmt.Sprintf(":%d", internalPortAuth)},
+				{Name: "AUTH_TOKEN_ISSUER", Value: authIssuerName},
+			},
+			VolumeMounts: authVolumeMounts,
+			Ports: []corev1.ContainerPort{
+				{Name: "auth", ContainerPort: internalPortAuth, Protocol: corev1.ProtocolTCP},
+			},
+			ReadinessProbe: httpProbe(internalPortAuth, "/"),
+			LivenessProbe:  httpProbe(internalPortAuth, "/"),
+			Resources: corev1.ResourceRequirements{
+				Limits: map[corev1.ResourceName]resource.Quantity{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Requests: map[corev1.ResourceName]resource.Quantity{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("64Mi"),
+				},
+			},
+		},
+		{
+			Name:            "nginx",
+			Image:           r.imageNginx,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Ports: []corev1.ContainerPort{
+				{Name: "https", ContainerPort: internalPortNginx, Protocol: corev1.ProtocolTCP},
+				{Name: "http", ContainerPort: 8080, Protocol: corev1.ProtocolTCP},
+			},
+			VolumeMounts: []corev1.VolumeMount{
+				{Name: "tls", MountPath: "/etc/nginx/tls"},
+			},
+			ReadinessProbe: httpProbe(8080, "/health"),
+			LivenessProbe:  httpProbe(8080, "/health"),
+			Resources: corev1.ResourceRequirements{
+				Limits: map[corev1.ResourceName]resource.Quantity{
+					corev1.ResourceCPU:    resource.MustParse("200m"),
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				},
+				Requests: map[corev1.ResourceName]resource.Quantity{
+					corev1.ResourceCPU:    resource.MustParse("100m"),
+					corev1.ResourceMemory: resource.MustParse("64Mi"),
 				},
 			},
 		},
