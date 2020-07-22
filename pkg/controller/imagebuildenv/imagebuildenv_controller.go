@@ -125,7 +125,7 @@ func (r *ReconcileImageBuildEnv) Reconcile(request reconcile.Request) (reconcile
 		if isFinalizerPresent {
 			err = r.secretRefs.UpdateReferences(context.TODO(), reqLogger, refOwner, nil)
 			if err != nil {
-				reqLogger.Error(err, "finalizer %s failed to remove input ownerReferences", finalizer)
+				reqLogger.Error(err, "finalizer failed to remove input ownerReferences")
 				return reconcile.Result{}, err
 			}
 			controllerutil.RemoveFinalizer(instance, finalizer)

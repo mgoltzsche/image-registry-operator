@@ -169,7 +169,7 @@ func (r *ReconcileImageSecret) Reconcile(request reconcile.Request) (reconcile.R
 			if registryNs != "" {
 				err = r.deleteOrphanAccounts(reqLogger, request.NamespacedName, registryNs)
 				if err != nil {
-					reqLogger.Error(err, "finalizer %s failed to delete accounts", finalizer)
+					reqLogger.Error(err, "finalizer failed to delete accounts")
 					return reconcile.Result{}, err
 				}
 			}
