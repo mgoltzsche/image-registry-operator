@@ -1,0 +1,28 @@
+apiVersion: config.k8s.io/v1alpha1
+kind: Krmfile
+openAPI:
+  definitions:
+    io.k8s.cli.setters.registry-manager-image:
+      type: string
+      x-k8s-cli:
+        setter:
+          name: registry-manager-image
+          value: mgoltzsche/image-registry-operator:latest
+    io.k8s.cli.setters.registry-auth-image:
+      type: string
+      x-k8s-cli:
+        setter:
+          name: registry-auth-image
+          value: mgoltzsche/image-registry-operator:latest-auth
+    io.k8s.cli.setters.registry-nginx-image:
+      type: string
+      x-k8s-cli:
+        setter:
+          name: registry-nginx-image
+          value: mgoltzsche/image-registry-operator:latest-nginx
+    io.k8s.cli.setters.registry-image:
+      type: string
+      x-k8s-cli:
+        setter:
+          name: registry-image
+          value: registry:2

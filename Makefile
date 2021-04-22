@@ -86,7 +86,11 @@ clean:
 	rm -rf build/_output .kubeconfig
 
 start-minikube:
-	minikube start --kubernetes-version=1.18.3 --network-plugin=cni --enable-default-cni --container-runtime=cri-o --bootstrapper=kubeadm
+	minikube start --kubernetes-version=1.20.5 --network-plugin=cni --enable-default-cni --container-runtime=cri-o --bootstrapper=kubeadm
 
 delete-minikube:
 	minikube delete
+
+release-kustomization: KUSTOMIZATION_DIR=deploy/operator
+release-kustomization:
+	VERSION=$(VERSION) KUSTOMIZATION_DIR=$(KUSTOMIZATION_DIR) ./hack/release.sh
