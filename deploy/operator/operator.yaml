@@ -15,7 +15,7 @@ spec:
       serviceAccountName: image-registry-operator
       containers:
       - name: operator
-        image: mgoltzsche/image-registry-operator:latest # {"$openapi":"registry-manager-image"}
+        image: mgoltzsche/image-registry-operator:0.0.0 # {"$openapi":"registry-manager-image"}
         command:
         - image-registry-operator
         imagePullPolicy: IfNotPresent
@@ -43,6 +43,6 @@ spec:
         - name: OPERATOR_IMAGE_REGISTRY
           value: registry:2 # {"$openapi":"registry-image"}
         - name: OPERATOR_IMAGE_AUTH
-          value: mgoltzsche/image-registry-operator:latest-auth # {"$openapi":"registry-auth-image"}
+          value: mgoltzsche/image-registry-operator:0.0.0-auth # {"$openapi":"registry-auth-image"}
         - name: OPERATOR_IMAGE_NGINX
-          value: mgoltzsche/image-registry-operator:latest-nginx # {"$openapi":"registry-nginx-image"}
+          value: mgoltzsche/image-registry-operator:0.0.0-nginx # {"$openapi":"registry-nginx-image"}

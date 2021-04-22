@@ -7,19 +7,22 @@ openAPI:
       x-k8s-cli:
         setter:
           name: registry-manager-image
-          value: mgoltzsche/image-registry-operator:latest
+          value: mgoltzsche/image-registry-operator:0.0.0
+          isSet: true
     io.k8s.cli.setters.registry-auth-image:
       type: string
       x-k8s-cli:
         setter:
           name: registry-auth-image
-          value: mgoltzsche/image-registry-operator:latest-auth
+          value: mgoltzsche/image-registry-operator:0.0.0-auth
+          isSet: true
     io.k8s.cli.setters.registry-nginx-image:
       type: string
       x-k8s-cli:
         setter:
           name: registry-nginx-image
-          value: mgoltzsche/image-registry-operator:latest-nginx
+          value: mgoltzsche/image-registry-operator:0.0.0-nginx
+          isSet: true
     io.k8s.cli.setters.registry-image:
       type: string
       x-k8s-cli:
