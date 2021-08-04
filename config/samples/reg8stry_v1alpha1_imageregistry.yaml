@@ -1,0 +1,7 @@
+apiVersion: reg8stry.mgoltzsche.github.com/v1alpha1
+kind: ImageRegistry
+metadata:
+  name: imageregistry-sample
+spec:
+  # Add fields here
+  foo: bar

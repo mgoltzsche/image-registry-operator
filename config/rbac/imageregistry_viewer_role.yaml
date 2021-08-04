@@ -1,0 +1,20 @@
+# permissions for end users to view imageregistries.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: imageregistry-viewer-role
+rules:
+- apiGroups:
+  - reg8stry.mgoltzsche.github.com
+  resources:
+  - imageregistries
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - reg8stry.mgoltzsche.github.com
+  resources:
+  - imageregistries/status
+  verbs:
+  - get

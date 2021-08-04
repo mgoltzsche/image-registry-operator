@@ -1,0 +1,42 @@
+# Build auth_server
+FROM golang:1.16-alpine3.13 AS auth_server_build
+RUN apk add --update --no-cache ca-certificates make git gcc musl-dev binutils-gold
+ARG CESANTA_DOCKER_AUTH_VERSION=1.7.0
+RUN git clone -c 'advice.detachedHead=false' --branch=${CESANTA_DOCKER_AUTH_VERSION} https://github.com/cesanta/docker_auth /go/src/github.com/cesanta/docker_auth
+WORKDIR /go/src/github.com/cesanta/docker_auth/auth_server
+RUN go mod download
+#RUN go install -v github.com/a-urth/go-bindata/go-bindata
+#RUN make generate
+RUN go build -o /auth_server -ldflags "-X main.Version=${CESANTA_DOCKER_AUTH_VERSION} -s -w" .
+
+# Build plugin
+COPY go.mod go.sum /go/src/github.com/mgoltzsche/image-registry-operator/
+WORKDIR /go/src/github.com/mgoltzsche/image-registry-operator
+RUN echo 'replace github.com/cesanta/docker_auth/auth_server => ../../cesanta/docker_auth/auth_server' >> go.mod
+RUN go mod download
+COPY apis /go/src/github.com/mgoltzsche/image-registry-operator/apis
+COPY internal/auth /go/src/github.com/mgoltzsche/image-registry-operator/internal/auth
+COPY docker_auth /go/src/github.com/mgoltzsche/image-registry-operator/docker_auth
+WORKDIR /go/src/github.com/mgoltzsche/image-registry-operator/docker_auth
+RUN go build -o /k8s-docker-authn.so -buildmode=plugin -ldflags '-s -w' .
+
+# Build clean auth_server image
+FROM alpine:3.13 AS auth_server
+RUN apk add --update --no-cache ca-certificates gettext
+RUN addgroup -g 5001 auth_server
+RUN adduser -u 5001 -G auth_server -S -h /auth_server_data auth_server
+USER auth_server:auth_server
+ENV HOME=/auth_server_data
+COPY --from=auth_server_build /auth_server /k8s-docker-authn.so /docker_auth/
+COPY docker_auth/auth_config.yml.tpl /config/
+COPY docker_auth/auth_entrypoint /auth_entrypoint
+USER 65532:65532
+ENTRYPOINT ["/auth_entrypoint"]
+EXPOSE 5001
+
+# Test plugin binary compatibility
+# Should fail with exit code 2 reported by plugin due to missing KUBECONFIG
+FROM auth_server
+RUN timeout 3 /auth_entrypoint || [ $? -eq 2 ]
+
+FROM auth_server

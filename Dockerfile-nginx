@@ -1,0 +1,17 @@
+FROM nginx:1.21-alpine AS nginx
+COPY nginx.conf /etc/nginx/
+RUN chown nginx:nginx /var/cache/nginx
+USER nginx:nginx
+
+# Test
+FROM nginx
+USER root
+RUN set -ex; \
+	apk add --update --no-cache openssl; \
+	mkdir -p /etc/nginx/tls; \
+	openssl req -x509 -nodes -newkey rsa:4096 -keyout /etc/nginx/tls/tls.key -out /etc/nginx/tls/tls.crt -days 365 -subj '/CN=localhost'; \
+	chown nginx:nginx /etc/nginx/tls/*
+USER nginx:nginx
+RUN set -ex; nginx & sleep 2; wget -O - http://localhost:8080/health
+
+FROM nginx

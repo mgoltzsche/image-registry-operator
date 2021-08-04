@@ -2,37 +2,35 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 
-	"github.com/mgoltzsche/image-registry-operator/pkg/auth"
-	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/mgoltzsche/reg8stry/internal/auth"
+	"github.com/mgoltzsche/reg8stry/internal/flagext"
+
+	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
-// A CLI to authenticate users against kube registry resources
+// A CLI to authenticate users against ImageRegistryAccount resources
 func main() {
+	var kubeconfig, namespace, user, password string
 	log.SetFlags(0)
-	pwEnvVarName := "KUBE_REGISTRY_PASSWORD"
-	kubeconfig := os.Getenv("KUBECONFIG")
-	namespace := os.Getenv("NAMESPACE")
-	user := ""
-	pflag.StringVarP(&kubeconfig, "kubeconfig", "c", kubeconfig, "path to kubeconfig (env var KUBECONFIG)")
-	pflag.StringVarP(&namespace, "namespace", "n", namespace, "namespace with ImageRegistryAccounts to authenticate against (env var NAMESPACE)")
-	pflag.StringVarP(&user, "user", "u", user, "user name (set password via env var "+pwEnvVarName+")")
-	pflag.Parse()
-	if !pflag.Parsed() || len(pflag.Args()) != 0 {
-		pflag.Usage()
+	flag.StringVar(&kubeconfig, "kubeconfig", kubeconfig, "The path to kubeconfig")
+	flag.StringVar(&namespace, "namespace", namespace, "The namespace containing ImageRegistryAccounts to authenticate against")
+	flag.StringVar(&user, "user", user, "The user name")
+	flag.StringVar(&password, "password", user, "The password")
+	err := flagext.ParseFlagsAndEnvironment(flag.CommandLine, "REG8STRYAUTH_")
+	if err != nil {
+		flag.CommandLine.Usage()
+		fmt.Fprintf(os.Stderr, "invalid usage: %s", err.Error())
 		os.Exit(1)
 	}
-	pw, pwOk := os.LookupEnv(pwEnvVarName)
-	if !pwOk {
-		pflag.Usage()
-		fmt.Fprintf(os.Stderr, "env var %s not set\n", pwEnvVarName)
-		os.Exit(1)
-	}
-	a, err := authenticator(kubeconfig, namespace).Authenticate(user, pw)
+	a, err := authenticator(kubeconfig, namespace).Authenticate(user, password)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "authn error: %s\n", err)
 		os.Exit(2)
@@ -47,7 +45,6 @@ func main() {
 		panic(err)
 	}
 	fmt.Println(string(b))
-	os.Exit(0)
 }
 
 func authenticator(kubeconfig, namespace string) *auth.Authenticator {

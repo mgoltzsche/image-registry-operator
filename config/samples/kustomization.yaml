@@ -1,0 +1,7 @@
+## Append samples you want in your CSV to this file as resources ##
+resources:
+- reg8stry_v1alpha1_imageregistry.yaml
+- reg8stry_v1alpha1_imagepullsecret.yaml
+- reg8stry_v1alpha1_imagepushsecret.yaml
+- reg8stry_v1alpha1_imageregistryaccount.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: manager
+        image: controller:latest
+        env:
+        - name: REK8STRY_METRICS_BIND_ADDRESS
+          value: "127.0.0.1:8080"
+        - name: REK8STRY_HEALTH_PROBE_BIND_ADDRESS
+          value: ":8081"
+        - name: REK8STRY_LEADER_ELECT
+          value: "false"
+        - name: REK8STRY_MANAGER_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: REK8STRY_DEFAULT_REGISTRY_NAME
+          value: "registry"
+        - name: REK8STRY_DEFAULT_REGISTRY_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: REK8STRY_DNS_ZONE
+          value: svc.cluster.local
+        - name: REK8STRY_ACCOUNT_TTL
+          value: "36h"
+        - name: REK8STRY_SECRET_ROTATION_INTERVAL
+          value: "24h"
+        - name: REK8STRY_SECRET_RECONCILE_INTERVAL
+          # time after which a secret that points to a non-existing registry is reconciled
+          value: "30s"
+        - name: REK8STRY_IMAGE_NGINX
+          value: nginx
+        - name: REK8STRY_IMAGE_AUTH
+          value: auth
+        - name: REK8STRY_IMAGE_REGISTRY
+          value: registry:2
+        securityContext:
+          allowPrivilegeEscalation: false
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+      serviceAccountName: controller-manager
+      terminationGracePeriodSeconds: 10

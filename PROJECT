@@ -1,0 +1,48 @@
+componentConfig: true
+domain: mgoltzsche.github.com
+layout:
+- go.kubebuilder.io/v3
+multigroup: true
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+projectName: reg8stry
+repo: github.com/mgoltzsche/reg8stry
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mgoltzsche.github.com
+  group: reg8stry
+  kind: ImageRegistry
+  path: github.com/mgoltzsche/reg8stry/apis/reg8stry/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mgoltzsche.github.com
+  group: reg8stry
+  kind: ImagePullSecret
+  path: github.com/mgoltzsche/reg8stry/apis/reg8stry/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mgoltzsche.github.com
+  group: reg8stry
+  kind: ImagePushSecret
+  path: github.com/mgoltzsche/reg8stry/apis/reg8stry/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mgoltzsche.github.com
+  group: reg8stry
+  kind: ImageRegistryAccount
+  path: github.com/mgoltzsche/reg8stry/apis/reg8stry/v1alpha1
+  version: v1alpha1
+version: "3"

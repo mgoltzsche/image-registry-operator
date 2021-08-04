@@ -1,0 +1,70 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.2
+  creationTimestamp: null
+  name: imageregistryaccounts.reg8stry.mgoltzsche.github.com
+spec:
+  group: reg8stry.mgoltzsche.github.com
+  names:
+    kind: ImageRegistryAccount
+    listKind: ImageRegistryAccountList
+    plural: imageregistryaccounts
+    singular: imageregistryaccount
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ImageRegistryAccount is the Schema for the imageregistryaccounts
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ImageRegistryAccountSpec defines the desired state of ImageRegistryAccount
+            properties:
+              labels:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                description: Labels to match against authorization rules
+                type: object
+              password:
+                description: Password bcrypt hashed password
+                type: string
+              ttl:
+                description: TTL time to live for the account
+                type: string
+            required:
+            - password
+            type: object
+          status:
+            description: ImageRegistryAccountStatus defines the observed state of
+              ImageRegistryAccount
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
